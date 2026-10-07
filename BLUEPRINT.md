@@ -59,6 +59,32 @@ En concreto, el usuario podrá:
 | 5. Control | HU14 | Presupuesto por categoría | R3 |
 | | HU15 | Gráficos por categoría | R3 |
 
+### Clasificación, prioridad y esfuerzo de las historias
+
+La puntuación de IA indica qué tan viable es implementar la historia con apoyo de una IA de programación. No significa que el producto final incorpore inteligencia artificial. Las historias con reglas claras, validaciones y componentes convencionales reciben una puntuación alta; las que requieren decisiones sensibles de seguridad, sincronización distribuida o reglas complejas reciben una puntuación menor.
+
+La puntuación de esfuerzo/tiempo va de 1 (menor) a 10 (mayor), considerando reglas de negocio, trabajo frontend/backend, persistencia, sincronización sin conexión y pruebas.
+
+| HU | Historia | Puntos IA | Clasificación | MoSCoW | Esfuerzo/tiempo (1–10) |
+|---|---|---:|---|---|---:|
+| HU01 | Registro de usuario | 4 | Historia híbrida; combina lógica tradicional e IA | Must | 6 |
+| HU02 | Inicio y cierre de sesión | 3 | Historia híbrida; combina lógica tradicional e IA | Must | 8 |
+| HU03 | Recuperar contraseña | 4 | Historia híbrida; combina lógica tradicional e IA | Should | 5 |
+| HU04 | Registrar gasto | 5 | Historia implementable principalmente con IA | Must | 8 |
+| HU05 | Registrar ingreso | 5 | Historia implementable principalmente con IA | Must | 4 |
+| HU06 | Editar movimiento | 5 | Historia implementable principalmente con IA | Must | 6 |
+| HU07 | Eliminar movimiento | 5 | Historia implementable principalmente con IA | Must | 5 |
+| HU08 | Categorías personalizadas | 4 | Historia híbrida; combina lógica tradicional e IA | Should | 7 |
+| HU09 | Movimientos recurrentes | 3 | Historia híbrida; combina lógica tradicional e IA | Should | 9 |
+| HU10 | Notas y etiquetas | 5 | Historia implementable principalmente con IA | Could | 4 |
+| HU11 | Historial de movimientos | 4 | Historia híbrida; combina lógica tradicional e IA | Must | 6 |
+| HU12 | Búsqueda y filtros | 5 | Historia implementable principalmente con IA | Should | 6 |
+| HU13 | Resumen mensual | 5 | Historia implementable principalmente con IA | Must | 7 |
+| HU14 | Presupuesto mensual por categoría | 4 | Historia híbrida; combina lógica tradicional e IA | Should | 8 |
+| HU15 | Gráficos de gastos por categoría | 5 | Historia implementable principalmente con IA | Could | 6 |
+
+**Criterio de priorización:** `Must` agrupa las capacidades indispensables para registrar y consultar finanzas; `Should`, las necesarias para completar el producto de uso diario; `Could`, las mejoras de análisis y personalización que pueden posponerse sin bloquear el núcleo. No se marca ninguna historia como `Won't`, porque todas forman parte del alcance registrado del blueprint.
+
 **Entregas:**
 - **R1 (Núcleo):** la app ya sirve para el uso diario. Incluye la sincronización sin conexión desde el inicio.
 - **R2 (Análisis):** automatiza los pagos fijos y permite encontrar y entender los movimientos.

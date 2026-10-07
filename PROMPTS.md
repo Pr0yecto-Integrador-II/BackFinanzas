@@ -1,4 +1,4 @@
-# 3 prompts para construir el Blueprint de la App de Gastos Personales
+# 4 prompts para construir y priorizar el Blueprint de la App de Gastos Personales
 
 
 ## 1. Buenas prácticas aplicadas (investigadas en la web)
@@ -131,6 +131,104 @@ Antes de entregar, razona dentro de <thinking> y comprueba, sin incluir el razon
 - [ ] Toda regla indica si funciona sin conexión.
 - [ ] Ninguna regla contradice a otra (por ejemplo, HU06 y HU08 sobre cambio de tipo).
 - [ ] Los mensajes de pantalla son textos exactos y consistentes entre historias.
+</verification>
+~~~~
+
+---
+
+## Prompt adicional: Clasificación con IA y priorización de historias
+
+**Objetivo:** analizar únicamente las 15 historias de usuario del Blueprint y producir la clasificación por nivel de apoyo de IA, la prioridad MoSCoW y una estimación de esfuerzo/tiempo.
+
+~~~~xml
+<role>
+Eres un analista senior de producto y desarrollo de software especializado en aplicaciones web offline-first. Evalúas historias de usuario con criterio práctico, considerando la complejidad funcional, la seguridad, la sincronización cliente-servidor, el trabajo de frontend y backend, y la capacidad de una IA de programación para generar una primera implementación verificable.
+</role>
+
+<context>
+El proyecto es una app web de finanzas personales llamada App de Gastos Personales. Funciona sin conexión, guarda datos localmente y los sincroniza con un backend. El Blueprint contiene exactamente 15 historias de usuario, desde HU01 hasta HU15.
+
+La puntuación de IA mide qué tan viable es implementar la historia con apoyo de una IA de programación; no indica que el producto final deba tener inteligencia artificial. Una puntuación alta significa que la historia tiene reglas claras, patrones conocidos y código que una IA puede proponer y probar con poca intervención humana. Una puntuación baja significa que requiere mayor supervisión experta por seguridad, decisiones de arquitectura, sincronización distribuida o reglas complejas.
+</context>
+
+<documents>
+<document index="1">
+<source>BLUEPRINT.md</source>
+<document_content>
+Pega aquí el contenido completo de BLUEPRINT.md o, como mínimo, el mapa de historias y las secciones completas de HU01 a HU15.
+</document_content>
+</document>
+</documents>
+
+<task>
+Clasifica y prioriza únicamente las historias de usuario HU01 a HU15 registradas en el Blueprint. No analices el objetivo general, el glosario, la arquitectura, la base de datos, la API ni las instrucciones para agentes como si fueran historias.
+
+Para cada historia entrega:
+1. Su identificador y título exactos.
+2. Una puntuación de IA de 0 a 5.
+3. Una clasificación según el rango de puntuación.
+4. Una prioridad MoSCoW.
+5. Una puntuación de esfuerzo/tiempo de 1 a 10.
+6. Una justificación breve y específica basada en las reglas y criterios de aceptación de esa historia.
+</task>
+
+<instructions>
+Usa exactamente estos rangos para la puntuación de IA:
+- 0–1 puntos: historia tradicional, sin IA como apoyo principal; requiere una implementación convencional y no se beneficia especialmente de generación asistida.
+- 2–3 puntos: historia híbrida; una IA puede ayudar con parte del código, pero la seguridad, la arquitectura, la sincronización o las reglas complejas requieren revisión humana importante.
+- 4–5 puntos: historia implementable principalmente con IA; sus validaciones, pantallas, operaciones CRUD, cálculos o consultas siguen patrones conocidos y pueden generarse con pruebas y revisión humana.
+
+La clasificación se refiere al proceso de desarrollo asistido por IA, no a incorporar IA dentro de la funcionalidad del producto. No asignes 0 únicamente porque una historia no use inteligencia artificial en la aplicación.
+
+Usa MoSCoW así:
+- Must: indispensable para que el núcleo de la aplicación permita registrar, proteger y consultar las finanzas.
+- Should: importante para completar el uso diario, pero el producto puede funcionar temporalmente sin ella.
+- Could: aporta comodidad, análisis o personalización y puede posponerse sin bloquear el núcleo.
+- Won't: queda explícitamente fuera de la prioridad actual, aunque podría existir en el Blueprint.
+
+Asigna esfuerzo/tiempo de 1 a 10 considerando el alcance completo de la historia: reglas de negocio, frontend, backend, persistencia, funcionamiento offline, sincronización, seguridad, pruebas y dependencias con otras historias. No confundas facilidad para generar código con bajo esfuerzo total.
+
+Para evitar priorizaciones arbitrarias:
+- HU01–HU03 deben considerar autenticación, sesiones, contraseñas y seguridad.
+- HU04–HU07 deben considerar escritura offline, outbox, sincronización y actualización de resúmenes.
+- HU08–HU10 deben considerar reglas de categorías, recurrencias, notas y etiquetas.
+- HU11–HU13 deben considerar consultas locales, filtros, historial y cálculos de resumen.
+- HU14–HU15 deben considerar cálculos por período, alertas y visualización.
+
+Mantén los títulos y los identificadores del Blueprint. No inventes historias, no dividas historias, no cambies sus reglas y no agregues funcionalidades fuera de alcance.
+</instructions>
+
+<constraints>
+- Deben aparecer exactamente 15 filas: una por cada historia HU01–HU15.
+- La mayoría de las historias debe quedar entre 4 y 5 puntos cuando sus reglas sean convencionales y aptas para generación asistida; no fuerces puntuaciones bajas solo porque no incorporan IA al producto.
+- Las historias con autenticación avanzada, sincronización distribuida o reglas temporales complejas pueden quedar en 2–3 puntos si la justificación lo demuestra.
+- No uses una puntuación de esfuerzo/tiempo como sustituto de la puntuación de IA: son dimensiones independientes.
+- Prioriza el núcleo funcional antes que las funciones de análisis o personalización.
+- Si falta una historia, hay una contradicción o el Blueprint no permite justificar una puntuación, detente y formula preguntas concretas antes de completar la tabla.
+</constraints>
+
+<output_format>
+Devuelve únicamente Markdown con estas secciones:
+
+### Criterio utilizado
+Explica en un párrafo la diferencia entre puntuación de IA, prioridad MoSCoW y esfuerzo/tiempo.
+
+### Clasificación y priorización
+Incluye una tabla con las columnas: HU, Historia, Puntos IA, Clasificación, MoSCoW, Esfuerzo/tiempo (1–10) y Justificación.
+
+### Resumen
+Indica cuántas historias quedaron en cada rango de IA y cuántas en cada categoría MoSCoW. Confirma que se analizaron exactamente HU01–HU15.
+</output_format>
+
+<verification>
+Antes de entregar, revisa internamente:
+- [ ] Hay exactamente 15 historias y están todas las HU01–HU15.
+- [ ] Cada puntuación de IA coincide con su rango y clasificación.
+- [ ] La mayoría está entre 4 y 5 cuando el código sigue patrones conocidos.
+- [ ] Las justificaciones mencionan aspectos concretos de cada historia.
+- [ ] MoSCoW refleja dependencia e importancia funcional, no solo el orden original de entregas.
+- [ ] El esfuerzo considera frontend, backend, offline, sincronización y pruebas cuando corresponda.
+- [ ] No se analizaron secciones del Blueprint que no sean historias de usuario.
 </verification>
 ~~~~
 
@@ -320,4 +418,3 @@ Razona en <thinking> (no lo incluyas en la salida) y confirma:
 ~~~~
 
 ---
-
