@@ -235,3 +235,10 @@ Formato: contexto → decisión → razón → consecuencia. Una decisión que c
 - **Correo de desarrollo:** `LogEmailSender` escribe el enlace de recuperación (con su token) en el log. El worker ahora **se niega a arrancar** si `COOKIE_SECURE=true` (producción) hasta que se configure el proveedor real (D-09): falla cerrado en vez de filtrar tokens.
 - **Revisado sin hallazgos:** toda consulta filtra por `user_id` del token; ningún esquema acepta `user_id`; todos los esquemas de entrada son `extra="forbid"` con límites; sin SQL por concatenación (el único `text()` con parámetro es el bloqueo); sin `float` en montos; sin `datetime.now()` fuera de `Clock`; secretos solo por entorno (`.env` ignorado por git).
 - **Pendientes que no son código:** elegir proveedor de correo (D-09), cabeceras de seguridad y TLS en el proxy de despliegue, y el despliegue en sí (fuera de alcance del plan).
+
+### D-48 · Revisión de robustez: errores hallados y corregidos (P)
+- **NUL (`\x00`) en texto → HTTP 500.** PostgreSQL no admite ese carácter; llegaba a la base desde el registro/login (correo) y desde `data` del push. Ahora los esquemas de auth lo rechazan (422) y el push rechaza **ese cambio** (`InvalidChangeError`).
+- **`DataError` dentro de un cambio del push** (valor fuera de rango o no representable) tumbaba todo el lote. El savepoint lo traduce a `InvalidChangeError`, igual que ya hacía con `IntegrityError`.
+- **`paused_at` sin zona horaria** en una regla ahora se rechaza (`AwareDatetime`), como `created_at`.
+- **`GET /sync/pull?since=` mayor que BIGINT** daba 500; ahora 422.
+- Pruebas nuevas de sondeo: `tests/integration/sync/test_robustness.py` y `tests/integration/auth/test_probes.py`.

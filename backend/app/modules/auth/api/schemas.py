@@ -1,10 +1,19 @@
 import uuid
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class _In(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("*", mode="after")
+    @classmethod
+    def _no_nul(cls, value: Any) -> Any:
+        # PostgreSQL no admite NUL en texto: sin esto, una consulta por correo daría error 500.
+        if isinstance(value, str) and "\x00" in value:
+            raise ValueError("No se admite el carácter nulo.")
+        return value
 
 
 class RegisterIn(_In):
