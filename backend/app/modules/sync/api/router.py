@@ -8,6 +8,7 @@ from app.container import get_clock
 from app.modules.auth.api.deps import CurrentUserId
 from app.modules.sync.api.schemas import (
     MAX_CHANGES,
+    MAX_VERSION,
     PullChangeOut,
     PullOut,
     PushIn,
@@ -42,7 +43,7 @@ async def push(
 async def pull(
     user_id: CurrentUserId,
     session: SessionDep,
-    since: Annotated[int, Query(ge=0)] = 0,
+    since: Annotated[int, Query(ge=0, le=MAX_VERSION)] = 0,
     limit: Annotated[int, Query(ge=1, le=MAX_CHANGES)] = MAX_CHANGES,
 ) -> PullOut:
     result = await composition.pull_changes(session).execute(user_id, since, limit)

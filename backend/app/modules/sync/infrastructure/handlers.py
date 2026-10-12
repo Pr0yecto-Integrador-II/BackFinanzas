@@ -1,7 +1,7 @@
 """Adaptadores del push: validan la forma de `data` y llaman al caso de uso del módulo dueño."""
 
 import uuid
-from datetime import date, datetime
+from datetime import date
 from typing import Any
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictInt, ValidationError
@@ -57,7 +57,7 @@ class RuleData(_Data):
     description: str | None = _Text
     end_on: date | None = None
     max_occurrences: StrictInt | None = None
-    paused_at: datetime | None = None
+    paused_at: AwareDatetime | None = None
 
 
 class BudgetData(_Data):
@@ -75,9 +75,22 @@ class NoData(_Data):
     pass
 
 
+def _has_nul(value: Any) -> bool:
+    if isinstance(value, str):
+        return "\x00" in value
+    if isinstance(value, list):
+        return any(_has_nul(v) for v in value)
+    return False
+
+
 def _parse[T: BaseModel](model: type[T], data: dict[str, Any]) -> T:
     try:
-        return model.model_validate(data)
+        parsed = model.model_validate(data)
+        # PostgreSQL no admite el carácter NUL en texto: rechazarlo aquí evita un error de base.
+        bad = sorted(name for name, v in parsed.model_dump().items() if _has_nul(v))
+        if bad:
+            raise InvalidChangeError(f"Datos inválidos en: {', '.join(bad)}.")
+        return parsed
     except ValidationError as exc:
         fields = ", ".join(
             sorted({".".join(str(p) for p in e["loc"]) or "data" for e in exc.errors()})
