@@ -1,12 +1,7 @@
-import asyncio
-import os
-import subprocess
 import uuid
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
-import asyncpg  # type: ignore[import-untyped]
-import pytest
 import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, create_async_engine
@@ -14,29 +9,8 @@ from sqlalchemy.pool import NullPool
 
 from app import composition
 from app.modules.categories.application.upsert import UpsertCategoryInput
+from tests.conftest import TEST_URL
 from tests.unit.auth.fakes import FakeClock
-
-ADMIN_DSN = "postgresql://finanzas:finanzas@localhost:5433/postgres"
-TEST_DB = "finanzas_test"
-TEST_URL = f"postgresql+asyncpg://finanzas:finanzas@localhost:5433/{TEST_DB}"
-
-
-async def _recreate_database() -> None:
-    conn = await asyncpg.connect(ADMIN_DSN)
-    try:
-        await conn.execute(f"DROP DATABASE IF EXISTS {TEST_DB} WITH (FORCE)")
-        await conn.execute(f"CREATE DATABASE {TEST_DB}")
-    finally:
-        await conn.close()
-
-
-@pytest.fixture(scope="session")
-def migrated_database() -> Iterator[None]:
-    """Crea una BD limpia y le aplica las migraciones reales de Alembic."""
-    asyncio.run(_recreate_database())
-    env = {**os.environ, "DATABASE_URL": TEST_URL, "JWT_SECRET": "x" * 32}
-    subprocess.run(["alembic", "upgrade", "head"], check=True, env=env)
-    yield
 
 
 @pytest_asyncio.fixture
