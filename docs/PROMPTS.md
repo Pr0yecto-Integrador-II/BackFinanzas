@@ -27,7 +27,7 @@ Fuentes: [Prompting best practices (Anthropic)](https://platform.claude.com/en/d
 
 ````xml
 <role>
-Eres un analista de producto senior especializado en aplicaciones de finanzas personales offline-first, con experiencia redactando historias de usuario, reglas de negocio y criterios de aceptación en Gherkin. Escribes en español claro, sin jerga innecesaria.
+Eres un analista de producto senior especializado en aplicaciones de finanzas personales, con experiencia redactando historias de usuario, reglas de negocio y criterios de aceptación en Gherkin. Escribes en español claro, sin jerga innecesaria.
 </role>
 
 <context>
@@ -141,7 +141,7 @@ Antes de entregar, razona dentro de <thinking> y comprueba, sin incluir el razon
 
 ```xml
 <role>
-Eres un analista senior de producto y desarrollo de software especializado en aplicaciones web offline-first. Evalúas historias de usuario con criterio práctico, considerando la complejidad funcional, la seguridad, la sincronización cliente-servidor, el trabajo de frontend y backend, y la capacidad de una IA de programación para generar una primera implementación verificable.
+Eres un analista senior de producto y desarrollo de software especializado en aplicaciones web . Evalúas historias de usuario con criterio práctico, considerando la complejidad funcional, la seguridad, la sincronización cliente-servidor, el trabajo de frontend y backend, y la capacidad de una IA de programación para generar una primera implementación verificable.
 </role>
 
 <context>
@@ -185,11 +185,11 @@ Usa MoSCoW así:
 - Could: aporta comodidad, análisis o personalización y puede posponerse sin bloquear el núcleo.
 - Won't: queda explícitamente fuera de la prioridad actual, aunque podría existir en el Blueprint.
 
-Asigna esfuerzo/tiempo de 1 a 10 considerando el alcance completo de la historia: reglas de negocio, frontend, backend, persistencia, funcionamiento offline, sincronización, seguridad, pruebas y dependencias con otras historias. No confundas facilidad para generar código con bajo esfuerzo total.
+Asigna esfuerzo/tiempo de 1 a 10 considerando el alcance completo de la historia: reglas de negocio, frontend, backend, persistencia, sincronización, seguridad, pruebas y dependencias con otras historias. No confundas facilidad para generar código con bajo esfuerzo total.
 
 Para evitar priorizaciones arbitrarias:
 - HU01–HU03 deben considerar autenticación, sesiones, contraseñas y seguridad.
-- HU04–HU07 deben considerar escritura offline, outbox, sincronización y actualización de resúmenes.
+- HU04–HU07 deben considerar escritura, outbox, sincronización y actualización de resúmenes.
 - HU08–HU10 deben considerar reglas de categorías, recurrencias, notas y etiquetas.
 - HU11–HU13 deben considerar consultas locales, filtros, historial y cálculos de resumen.
 - HU14–HU15 deben considerar cálculos por período, alertas y visualización.
@@ -226,7 +226,7 @@ Antes de entregar, revisa internamente:
 - [ ] La mayoría está entre 4 y 5 cuando el código sigue patrones conocidos.
 - [ ] Las justificaciones mencionan aspectos concretos de cada historia.
 - [ ] MoSCoW refleja dependencia e importancia funcional, no solo el orden original de entregas.
-- [ ] El esfuerzo considera frontend, backend, offline, sincronización y pruebas cuando corresponda.
+- [ ] El esfuerzo considera frontend, backend, sincronización y pruebas cuando corresponda.
 - [ ] No se analizaron secciones del Blueprint que no sean historias de usuario.
 </verification>
 ```
@@ -239,7 +239,7 @@ Antes de entregar, revisa internamente:
 
 ````xml
 <role>
-Eres un arquitecto de software senior con experiencia en sistemas offline-first, sincronización cliente-servidor, PostgreSQL, FastAPI y Angular. Justificas cada decisión técnica con el requisito que la origina, y prefieres la solución más simple que cumpla.
+Eres un arquitecto de software senior con experiencia en sistemas , sincronización cliente-servidor, PostgreSQL, FastAPI y Angular. Justificas cada decisión técnica con el requisito que la origina, y prefieres la solución más simple que cumpla.
 </role>
 
 <context>
@@ -424,11 +424,11 @@ Razona en <thinking> (no lo incluyas en la salida) y confirma:
 
 ````xml
 <role>
-Eres un arquitecto senior de QA y aseguramiento de la calidad de software (SDET & Security Lead), especializado en aplicaciones financieras offline-first, arquitectura hexagonal con FastAPI, PostgreSQL y diseño de pruebas automatizadas en Python (pytest, pytest-asyncio, pytest-bdd, httpx). Diseñas suites de pruebas deterministas, robustas y herméticas, siguiendo la pirámide de testing y garantizando cero falsos positivos.
+Eres un arquitecto senior de QA y aseguramiento de la calidad de software (SDET & Security Lead), especializado en aplicaciones financieras, arquitectura hexagonal con FastAPI, PostgreSQL y diseño de pruebas automatizadas en Python (pytest, pytest-asyncio, pytest-bdd, httpx). Diseñas suites de pruebas deterministas, robustas y herméticas, siguiendo la pirámide de testing y garantizando cero falsos positivos.
 </role>
 
 <context>
-Estamos desarrollando el backend de una aplicación web de finanzas personales offline-first (PWA) con FastAPI y PostgreSQL. La arquitectura es hexagonal y modular. Para asegurar la confiabilidad del producto, requerimos implementar la suite completa de pruebas dividida estrictamente en 4 niveles:
+Estamos desarrollando el backend de una aplicación web de finanzas personales  (PWA) con FastAPI y PostgreSQL. La arquitectura es hexagonal y modular. Para asegurar la confiabilidad del producto, requerimos implementar la suite completa de pruebas dividida estrictamente en 4 niveles:
 1. Unitarias: Lógica pura de dominio y casos de uso aislados con fakes en memoria (sin red, sin BD).
 2. Integración: Persistencia real con PostgreSQL en Docker, migraciones de Alembic y concurrencia.
 3. Seguridad: Verificación de autenticación, autorización, rate limiting, aislamiento multi-tenant y fuga de secretos.
@@ -533,6 +533,211 @@ Razona primero en un bloque <thinking> (no visible en la respuesta final) y conf
 - [ ] Todos los comandos `uv run pytest`, `uv run ruff check .` y `uv run mypy app` ejecutarán en verde sin excepciones.
 </verification>
 ````
+## 5. Prompt 5: Creación de pruebas front (el VERIFICAR)
+
+<role>
+Actúa como un ingeniero QA senior especializado en Angular, TypeScript,
+Vitest y Playwright. También tienes experiencia en pruebas unitarias,
+pruebas de integración, pruebas de aceptación y pruebas end-to-end.
+</role>
+
+<context>
+Estoy trabajando en una aplicación de finanzas desarrollada con:
+
+- Angular 22
+- TypeScript
+- Vitest para pruebas unitarias y de integración
+- Playwright para pruebas de aceptación y end-to-end
+- Angular Router
+- Angular Signals
+- Angular Material
+- Dexie/IndexedDB para persistencia local
+- Soporte PWA
+
+La estructura actual de pruebas es:
+
+- Pruebas unitarias e integración:
+  `src/**/*.spec.ts`
+
+- Pruebas de aceptación y end-to-end:
+  `tests/**/*.spec.ts`
+
+Los comandos disponibles son:
+
+- `npm test`
+- `npm run test:e2e`
+- `npm run test:e2e:ui`
+- `npm run build`
+- `npm run lint`
+
+Las pruebas de Playwright utilizan:
+
+- Base URL: `http://localhost:4200`
+- Navegadores Chromium, Firefox y WebKit
+- Servidor Angular iniciado con `npm run start`
+- Interceptación de endpoints mediante `page.route()`
+
+Ejemplos de funcionalidades existentes:
+
+- Inicio de sesión
+- Registro de usuarios
+- Validación de formularios
+- Protección de rutas privadas
+- Redirección a `/ingresar`
+- Manejo de errores HTTP 401
+- Alternar visibilidad de contraseña
+- Manejo de movimientos financieros
+- Categorías
+- Transacciones recurrentes
+- Reglas de negocio
+</context>
+
+<task>
+Analiza el código fuente de la funcionalidad que te proporcionaré y genera
+las pruebas automatizadas necesarias.
+
+Debes identificar primero:
+
+1. Reglas de negocio.
+2. Entradas válidas e inválidas.
+3. Estados iniciales y estados posteriores.
+4. Errores esperados.
+5. Dependencias externas.
+6. Rutas y navegación.
+7. Comportamiento online
+8. Criterios de aceptación observables por el usuario.
+
+Después genera las pruebas clasificadas en:
+
+A. Pruebas unitarias:
+- Prueban funciones puras y reglas de negocio.
+- No deben depender del DOM ni de servicios reales.
+- Deben cubrir casos normales, límites y errores.
+
+B. Pruebas de integración:
+- Prueban componentes Angular junto con formularios, servicios,
+  señales, router y dependencias simuladas.
+- Utiliza `TestBed`.
+- Utiliza `vi.fn()`, `vi.spyOn()` y mocks de Vitest.
+- Verifica cambios en el DOM, navegación y llamadas a servicios.
+
+C. Pruebas de aceptación y end-to-end:
+- Utiliza Playwright.
+- Simula el comportamiento real del usuario.
+- Usa locators accesibles o selectores estables.
+- Intercepta las llamadas HTTP cuando sea necesario.
+- Verifica textos, estados visibles, navegación y mensajes de error.
+- No dependas de un backend real si no es necesario.
+
+Para cada prueba incluye:
+
+- Nombre descriptivo en español.
+- Tipo de prueba.
+- Requisito o criterio de aceptación cubierto.
+- Archivo donde debe ubicarse.
+- Código completo.
+- Explicación breve del comportamiento validado.
+</task>
+
+<constraints>
+- Respeta la estructura actual del proyecto.
+- No cambies la arquitectura de la aplicación.
+- No modifiques código productivo salvo que sea estrictamente necesario.
+- No inventes nombres de métodos, rutas, servicios, selectores o textos.
+- Antes de escribir una prueba, verifica que las clases, métodos, rutas y
+  elementos utilizados existan realmente.
+- Reutiliza las convenciones de las pruebas existentes.
+- Usa Vitest, no Jest.
+- Usa Playwright Test para las pruebas end-to-end.
+- Evita esperas arbitrarias como `waitForTimeout`.
+- Prefiere `expect`, `toBeVisible`, `toHaveText`, `toHaveURL`,
+  `toBeDisabled` y otros matchers adecuados.
+- No pruebes detalles internos que no representen comportamiento observable.
+- Mantén cada prueba independiente y repetible.
+- No uses `test.only` ni `describe.only`.
+- No borres pruebas existentes.
+- No dupliques pruebas que ya existan.
+- Usa datos de prueba realistas, pero no uses credenciales reales.
+- Si falta información, indícalo explícitamente y formula una suposición
+  mínima antes de generar el código.
+</constraints>
+
+<test_strategy>
+Utiliza la siguiente estrategia de cobertura:
+
+- Camino feliz.
+- Campos vacíos.
+- Datos inválidos.
+- Valores límite.
+- Errores del servidor.
+- Estados de carga.
+- Permisos o rutas protegidas.
+- Navegación exitosa.
+- Navegación no autorizada.
+- Persistencia o recuperación de datos.
+- Interacciones repetidas del usuario.
+- Compatibilidad con accesibilidad básica.
+
+Relaciona cada prueba con el patrón:
+
+Arrange:
+prepara el estado inicial y los mocks.
+
+Act:
+ejecuta la acción del usuario o de la unidad bajo prueba.
+
+Assert:
+verifica el resultado esperado.
+</test_strategy>
+
+<output_format>
+Responde en este orden:
+
+1. Resumen de la funcionalidad analizada.
+2. Matriz de escenarios y cobertura.
+3. Pruebas unitarias.
+4. Pruebas de integración.
+5. Pruebas de aceptación/end-to-end.
+6. Archivos que deben crearse o modificarse.
+7. Comandos para ejecutar las pruebas.
+8. Posibles riesgos o información faltante.
+
+Usa bloques de código completos y listos para copiar.
+</output_format>
+
+<validation>
+Antes de finalizar, revisa que:
+
+- Los imports sean correctos.
+- Los tipos de TypeScript sean válidos.
+- Los mocks coincidan con las interfaces reales.
+- Los selectores existan en las plantillas.
+- Las rutas usadas estén configuradas.
+- Las pruebas no dependan del orden de ejecución.
+- No haya código incompleto ni pseudocódigo.
+- Las pruebas puedan ejecutarse con los scripts definidos en
+  `package.json`.
+</validation>
+
+<stop_conditions>
+Detén la generación y solicita información únicamente si:
+
+- No puedes determinar la API o comportamiento de una dependencia.
+- Falta el código fuente necesario.
+- Existe más de una interpretación funcional importante.
+- Una prueba requiere modificar el backend o infraestructura externa.
+- No puedes confirmar que una ruta, selector o servicio exista.
+
+Si falta información menor, continúa usando una suposición explícita
+y marca esa suposición.
+</stop_conditions>
+
+<input>
+La funcionalidad que debes analizar es:
+
+[PEGA AQUÍ EL COMPONENTE, SERVICIO, REGLA DE NEGOCIO,
+HISTORIA DE USUARIO O CRITERIOS DE ACEPTACIÓN]
+</input>
 
 
 ## Prompt Maestro: Construcción Integral de la PWA Frontend
@@ -541,7 +746,7 @@ Este prompt orquesta la implementación completa de la aplicación cliente en An
 
 ````xml
 <role>
-Eres un arquitecto frontend senior y Tech Lead especializado en Angular moderno (v18+), Progressive Web Apps (PWA) offline-first, arquitecturas limpias orientadas a dominio y diseño de interfaces accesibles (WCAG AA). Dominas a profundidad Signals, componentes standalone, ChangeDetectionStrategy.OnPush, Dexie.js (IndexedDB), visualización de datos con Apache ECharts y el patrón Outbox para sincronización bidireccional tolerante a fallos.
+Eres un arquitecto frontend senior y Tech Lead especializado en Angular moderno (v18+), Progressive Web Apps (PWA), arquitecturas limpias orientadas a dominio y diseño de interfaces accesibles (WCAG AA). Dominas a profundidad Signals, componentes standalone, ChangeDetectionStrategy.OnPush, Dexie.js (IndexedDB), visualización de datos con Apache ECharts y el patrón Outbox para sincronización bidireccional tolerante a fallos.
 </role>
 
 <context>
@@ -581,20 +786,12 @@ Implementa el frontend en Angular organizado modularmente por funcionalidades en
 <instructions>
 Desarrolla la solución respetando rigurosamente cada etapa:
 
-### Etapa 0: Base y Arquitectura
+### Etapa 1: Base y Arquitectura
 - Configura el proyecto con componentes Standalone exclusivamente.
 - Configuración global de ChangeDetectionStrategy.OnPush y uso de Signals (`signal`, `computed`, `effect`, `input`, `output`).
 - Inyección de dependencias mediante `inject()` en lugar de constructores sobrecargados.
 - Layout responsive adaptable: barra lateral de navegación para escritorio y barra inferior fija para móviles.
 - Motor de temas: Claro, Oscuro y Automático (basado en `prefers-color-scheme`), persistido en almacenamiento local y sin parpadeos de estilo.
-
-### Etapa 1: Núcleo sin Conexión (Offline-First Core)
-- Configura Dexie.js con tablas locales: `transactions`, `categories`, `budgets`, `recurring_rules`, `sync_outbox` y `metadata`.
-- Patrón Outbox Atómico: toda operación del usuario (crear, editar, eliminar) debe persistir en su tabla local y en `sync_outbox` **dentro de la misma transacción Dexie** (`db.transaction('rw', [tabla, outbox], ...)`).
-- La interfaz jamás bloquea al usuario esperando confirmación de red del servidor.
-- `SyncService`: implementa `push` incremental de cambios pendientes y `pull` con cursor `since` incremental.
-- Indicador reactivo de conectividad con 3 estados: "Todo al día", "Sincronizando..." y "Sin conexión".
-- Gestión de sesión y guardas de enrutamiento (`authGuard`, `guestGuard`). Al cerrar sesión, purga los datos locales de Dexie alertando si existen cambios locales sin sincronizar.
 
 ### Etapa 2: Acceso (HU01 a HU03)
 - Formularios reactivos estrictamente tipados (`FormGroup`, `FormControl`).
@@ -648,7 +845,7 @@ Desarrolla la solución respetando rigurosamente cada etapa:
 </constraints>
 
 <stop_conditions>
-Si una regla de validación o pantalla en el Blueprint no especifica su comportamiento offline, o si un endpoint requerido no está disponible en la especificación OpenAPI generada por el backend, no asumas la solución: reporta el hallazgo bajo "Inconsistencias de especificación" y consulta antes de continuar.
+Si una regla de validación o pantalla en el Blueprint no especifica su comportamiento, o si un endpoint requerido no está disponible en la especificación OpenAPI generada por el backend, no asumas la solución: reporta el hallazgo bajo "Inconsistencias de especificación" y consulta antes de continuar.
 </stop_conditions>
 
 <output_format>
@@ -679,7 +876,6 @@ Si estás trabajando iterativamente con un asistente de IA paso a paso, utiliza 
 
 ```mermaid
 graph TD
-    E0[Etapa 0: Arquitectura Base y Layout] --> E1[Etapa 1: Núcleo Offline y Dexie Outbox]
     E1 --> E2[Etapa 2: Módulo Acceso HU01-HU03]
     E2 --> E3[Etapa 3: Movimientos HU04-HU07, HU11]
     E3 --> E4[Etapa 4: Organización y Filtros HU08-HU10, HU12]
