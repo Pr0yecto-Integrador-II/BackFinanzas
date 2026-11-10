@@ -2,8 +2,8 @@
 
 Este documento organiza el **flujo de trabajo con la IA** durante el MVP 2 de voz (HU16–HU19):
 
-- **§1–§2 Reportes de corrección:** ajustes que el equipo pide sobre lo que entregó la IA. No son historias de usuario nuevas: cada uno se plantea como un **prompt de corrección**, con su motivo, lo esperado y el resultado.
-- **§3 Discusión:** en orden, lo que pidió el equipo, lo que preguntó o propuso la IA, lo que respondió el equipo y la decisión que quedó.
+- **§1–§4 Reportes de corrección:** ajustes que el equipo pide sobre lo que entregó la IA (C-01 en §2, C-02 en §3, C-03 en §4). No son historias de usuario nuevas: cada uno se plantea como un **prompt de corrección**, con su motivo, lo esperado y el resultado.
+- **§5 Discusión:** en orden, lo que pidió el equipo, lo que preguntó o propuso la IA, lo que respondió el equipo y la decisión que quedó.
 
 Fuentes del resultado que se corrige:
 
@@ -20,7 +20,9 @@ Especificación de referencia: `docs/MVP2.md` (§4 historias, §5 prompts de imp
 
 | ID | Fecha | Área | Hallazgo sobre el resultado de la IA | Tipo | Estado |
 |---|---|---|---|---|---|
-| C-01 | 2026-11-10 | Frontend (voz) | La voz está repartida en botones por pantalla; no hay un punto de entrada único ni comandos en lenguaje natural, y la confirmación solo se hace tocando "Guardar". | Ajuste funcional y de experiencia | Pendiente |
+| C-01 | 2026-11-10 | Frontend (voz) | La voz está repartida en botones por pantalla; no hay un punto de entrada único ni comandos en lenguaje natural, y la confirmación solo se hace tocando "Guardar". | Ajuste funcional y de experiencia | Pendiente de registrar resultado (§2.6) |
+| C-02 | 2026-11-10 | Frontend (voz) | Tras C-01, el asistente responde "no te entendí" con demasiada frecuencia: no reconoce bien instrucciones comunes como "léeme el último gasto" o "el último ingreso". | Ajuste de precisión y experiencia | Pendiente |
+| C-03 | 2026-11-10 | Frontend (voz) | Al registrar un gasto por voz, el usuario responde "sí" a la confirmación, pero el asistente no continúa: no guarda o no le dice que ya lo registró. | Defecto (prioridad alta, antes que C-02) | Pendiente |
 
 Estados posibles: **Pendiente** (prompt listo, sin ejecutar), **En curso**, **Aplicada** (con commit) y **Descartada** (con motivo).
 
@@ -192,11 +194,322 @@ _Pendiente de ejecutar el prompt. Al aplicarlo, registrar aquí:_
 
 ---
 
-## 3. Discusión: preguntas de la IA y decisiones del equipo
+## 3. C-02 — Precisión del asistente: entender casi cualquier solicitud
+
+### 3.1. Resultado entregado por la IA
+
+- El asistente de voz global de C-01 interpreta la frase con reglas locales y, cuando ninguna coincide, responde "no te entendí".
+- En las pruebas del equipo, solicitudes comunes caen en esa respuesta, por ejemplo "léeme el último gasto" y "el último ingreso".
+
+> Nota: al 2026-11-10 el código del asistente de C-01 no está en `origin/dev` de FrontFinanzas (el último commit allí es `056c5cf`). El prompt de C-02 le pide al agente localizarlo y detenerse si no existe.
+
+### 3.2. Observación del equipo
+
+> "No está reconociendo lo que le digo correctamente y solo dice 'no te entendí'. ¿Puedes hacer algo para que entienda mejor todas las instrucciones que le dé? Como 'léeme el último gasto', 'el último ingreso', todas las posibles solicitudes que haga un usuario: debes poder predecirlas para no caer tanto en esa respuesta de 'no entendí', porque eso puede ser frustrante para el usuario. Así que necesitamos que sea casi perfecto."
+
+### 3.3. Diagnóstico
+
+Causas probables que el prompt pide comprobar en el código antes de cambiar nada:
+
+| Capa | Problema probable | Ejemplo que falla |
+|---|---|---|
+| Reconocimiento (Azure) | Solo se usa la mejor transcripción y el SDK no conoce el vocabulario de la app (categorías, "ingreso", "gasto", nombres propios). | "Léeme el último gusto" en lugar de "gasto" |
+| Normalización | No se limpian por igual tildes, signos, mayúsculas, muletillas ("por favor", "oye", "eh") ni números en cifra o palabra. | "Léeme los últimos 5 gastos." frente a "leeme los ultimos cinco gastos" |
+| Interpretación | Las reglas exigen frases casi exactas: no cubren el singular ("el último"), los sinónimos ("dime", "muéstrame", "cuáles fueron") ni el orden libre. | "¿Cuál fue mi último ingreso?" |
+| Cobertura | No hay intención para solicitudes habituales: totales ("cuánto gasté este mes"), saldo, gastos por categoría o por fecha, repetir, detener. | "¿Cuánto llevo gastado hoy?" |
+| Respuesta de error | "No te entendí" no ofrece una salida: ni sugerencia ni ejemplos. | Cualquier frase dudosa |
+
+### 3.4. Decisiones del equipo para el ajuste
+
+1. **Meta medible:** un corpus de al menos 200 frases reales de prueba, con **≥ 95 % de intención correcta** y **0 guardados sin confirmación**. "Casi perfecto" se verifica con números, no a ojo.
+2. **Nunca un "no te entendí" seco:**
+   - Con duda razonable, el asistente propone su mejor interpretación ("¿Quieres que te lea tu último gasto?") y espera sí o no.
+   - Sin ninguna pista, responde con ejemplos de lo que sí puede hacer.
+   - Al segundo intento fallido ofrece la vía manual.
+3. **Pedidos fuera de alcance:** se reconocen y se responden con una explicación ("Por ahora no puedo eliminar movimientos por voz; ábrelo desde el historial"), no con "no te entendí".
+4. **Interpretación local y determinista:** sin LLM ni servicios nuevos, como exige `MVP2.md`. Si después de C-02 la precisión no llega a la meta, se evaluará un servicio de comprensión de lenguaje (por ejemplo Azure CLU) como corrección futura con aprobación previa.
+5. **Mejorar también el reconocimiento:** usar del mismo SDK las listas de frases (`PhraseListGrammar`) con el vocabulario y las categorías del usuario, y las transcripciones alternativas (N-best).
+6. **Privacidad:** las frases no reconocidas solo se registran en la consola en modo desarrollo; nunca se envían al servidor ni se guardan.
+
+### 3.5. Prompt de corrección
+
+```xml
+<role>
+Eres un ingeniero frontend senior especializado en interfaces de voz y comprensión de lenguaje natural basada en reglas para español colombiano, con experiencia en Angular 22, Azure AI Speech y pruebas con Vitest. Corriges un resultado ya entregado sin romper lo que funciona y sigues `AGENTS.md`.
+</role>
+
+<context>
+Repositorio FrontFinanzas, rama `dev`. En la corrección C-01 (`BackFinanzas/docs/REPORTES-Y-DISCUSION.md` §2) entregaste un asistente de voz global con un botón flotante. El equipo lo probó y pide la corrección C-02 (§3 del mismo documento): el asistente responde "no te entendí" con demasiada frecuencia.
+
+Observación textual del equipo:
+"No está reconociendo lo que le digo correctamente y solo dice 'no te entendí'. ¿Puedes hacer algo para que entienda mejor todas las instrucciones que le dé? Como 'léeme el último gasto', 'el último ingreso', todas las posibles solicitudes que haga un usuario: debes poder predecirlas para no caer tanto en esa respuesta de 'no entendí', porque eso puede ser frustrante para el usuario. Así que necesitamos que sea casi perfecto."
+
+Código a revisar primero:
+- Asistente de C-01: `src/app/features/asistente/` (dominio de intenciones, servicio orquestador y botón flotante).
+- `src/app/core/speech/azure-speech-engine.ts` (reconocimiento con `SpeechRecognizer`).
+- `src/app/features/movimientos/domain/voice.ts` (`normalizeSpeech`, `wordsToNumber`, `parseVoiceTransactionDraft`).
+- Datos locales: `TransactionRepo`, `CategoryRepo`, `BudgetRepo`, `AuthService.currency`, `Clock`.
+</context>
+
+<task>
+Haz que el asistente entienda casi cualquier solicitud razonable de un usuario y que nunca responda con un "no te entendí" sin ofrecer una salida. La meta es ≥ 95 % de intención correcta sobre un corpus de al menos 200 frases, sin guardar nada sin confirmación.
+</task>
+
+<instructions>
+1. **Diagnostica antes de cambiar.** Crea un corpus de prueba (`intents.corpus.ts`) con al menos 200 frases reales y su intención y datos esperados. Incluye:
+   - Variantes con y sin tildes, signos, mayúsculas y muletillas.
+   - Números en cifra y en palabras, singular y plural, y orden libre.
+   - Los errores típicos de reconocimiento.
+   Mide la precisión actual y repórtala como línea base.
+2. **Normalización única.** Una función pura `normalizeUtterance` que:
+   - Pase a minúsculas y quite tildes y signos.
+   - Elimine muletillas ("por favor", "oye", "eh", "este", "porfa", "me haces el favor de").
+   - Convierta números hablados y en cifra con `wordsToNumber`; "el último" o "la última" = 1 y "un par" = 2.
+   - Unifique sinónimos de verbos ("léeme", "dime", "muéstrame", "cuéntame", "cuáles fueron", "qué fue") a una forma canónica.
+3. **Interpretación por puntuación, no por coincidencia exacta.**
+   - Cada intención declara palabras clave con peso y espacios a extraer (tipo, cantidad, periodo, categoría, monto).
+   - Gana la intención con mayor puntaje y se calcula una confianza.
+   - Tolera errores de reconocimiento con distancia de edición propia (sin dependencias): máximo 1 en palabras de 4 a 6 letras y máximo 2 en las de 7 o más, para verbos clave, "gasto", "ingreso" y nombres de categorías.
+4. **Cobertura mínima de intenciones** (todas responden leyendo datos locales de Dexie):
+
+   | Intención | Ejemplos |
+   |---|---|
+   | Últimos N (gasto, ingreso o todos) | "léeme el último gasto", "el último ingreso", "mis últimos tres movimientos" |
+   | Por periodo | "qué gasté hoy", "mis gastos de ayer", "ingresos de esta semana", "gastos del mes" |
+   | Por categoría | "mis gastos en transporte", "cuánto llevo en alimentación" |
+   | Totales y saldo | "cuánto gasté este mes", "cuánto me ha entrado", "cuál es mi saldo del mes" |
+   | Registrar | la existente de C-01, con pistas de categoría ampliadas |
+   | Confirmar / cancelar / repetir / detener / ayuda | — |
+   | Fuera de alcance reconocido | "elimina el último gasto", "cambia el monto": responde con la explicación y la vía manual |
+
+5. **Desambiguación en lugar de error:**
+   - Confianza alta: ejecuta.
+   - Confianza media: pregunta "¿Quieres que …?" con su mejor interpretación y espera sí o no.
+   - Confianza baja: responde "Puedo leer tus últimos gastos, decirte cuánto llevas este mes o registrar un gasto. ¿Qué necesitas?".
+   - Tras dos intentos fallidos seguidos, ofrece la pantalla correspondiente.
+6. **Mejor reconocimiento en el adaptador de Azure** (mismo SDK, sin dependencias nuevas):
+   - Usa `PhraseListGrammar` con los verbos y comandos del asistente, las categorías activas y las etiquetas del usuario.
+   - Pide resultados detallados (`OutputFormat.Detailed`) y prueba la interpretación sobre las transcripciones alternativas (N-best) antes de rendirte.
+   - Mantén el puerto `SpeechEngine` para que las pruebas sigan usando el motor falso.
+7. **Documentación:**
+   - Añade en `BackFinanzas/docs/MVP2.md` §6.8 "Ajuste C-02" con la lista de intenciones soportadas y frases de ejemplo.
+   - Completa §3.6 "Resultado de la corrección" en `REPORTES-Y-DISCUSION.md`, con la precisión antes y después.
+</instructions>
+
+<constraints>
+- Es una corrección, no una historia nueva: no crees HU ni cambies la numeración de `MVP2.md`.
+- Sin LLM, sin servicios externos y sin dependencias nuevas. La distancia de edición se implementa en el dominio.
+- Sin cambios en el backend, el modelo de datos, Dexie ni el `outbox`.
+- Nunca guardar sin confirmación explícita. La desambiguación nunca ejecuta un registro sin el "sí" de C-01.
+- Las frases no reconocidas solo se registran en la consola en modo desarrollo; nunca se envían ni se guardan.
+- El dominio de intenciones es puro: sin Angular, Dexie ni SDK; la fecha llega desde `Clock`.
+</constraints>
+
+<tests>
+- Prueba de corpus que falla si la precisión baja de 95 %; imprime la matriz de confusión de las fallas.
+- Casos explícitos: "léeme el último gasto" → últimos 1 gasto; "el último ingreso" → últimos 1 ingreso; "léeme el último gusto" → gasto (tolerancia); "Léeme los últimos 5 gastos." y "leeme los ultimos cinco gastos" → mismo resultado.
+- Confianza media → pregunta de desambiguación; confianza baja → ejemplos; dos fallas → vía manual.
+- Fuera de alcance reconocido → explicación, no "no te entendí".
+- El adaptador de Azure configura la lista de frases y usa las alternativas (con un SDK simulado).
+- Todas las pruebas existentes de voz (HU16–HU19 y C-01) siguen en verde sin modificarlas.
+</tests>
+
+<stop_conditions>
+Detente y pregunta si no encuentras el código del asistente de C-01, si la meta de 95 % no se alcanza sin un servicio de NLU externo, si necesitas una dependencia nueva o si una prueba existente falla por algo que no tocaste.
+</stop_conditions>
+
+<workflow>
+1. Lee este reporte (§2 y §3) y el código indicado.
+2. Construye el corpus y mide la línea base.
+3. Presenta un plan corto con la línea base y espera aprobación.
+4. Implementa normalización → interpretación → desambiguación → reconocimiento, con sus pruebas.
+5. Ejecuta `npm run lint`, `npm test` y `npm run build` (Node ≥ 22.22.3) y déjalos en verde.
+</workflow>
+
+<output_format>
+Reporte con el formato de `AGENTS.md`: Corrección C-02, Cambios, precisión antes/después sobre el corpus, Pruebas, Comandos y resultado, Pendientes. Incluye una tabla con 20 frases representativas, la intención detectada y la respuesta hablada.
+</output_format>
+
+<verification>
+- [ ] Corpus de ≥ 200 frases con precisión ≥ 95 % (antes y después reportados).
+- [ ] "Léeme el último gasto" y "el último ingreso" funcionan.
+- [ ] Ningún "no te entendí" sin sugerencia o ejemplos.
+- [ ] Ningún guardado sin confirmación.
+- [ ] Lista de frases y N-best activos en el adaptador de Azure.
+- [ ] `MVP2.md` §6.8 y `REPORTES-Y-DISCUSION.md` §3.6 actualizados.
+- [ ] lint, test y build en verde.
+</verification>
+```
+
+### 3.6. Resultado de la corrección
+
+_Pendiente de ejecutar el prompt. Al aplicarlo, registrar aquí:_
+
+| Campo | Valor |
+|---|---|
+| Fecha de ejecución | |
+| Herramienta / modelo | |
+| Commit | |
+| Precisión del corpus (antes → después) | |
+| Frases representativas y respuesta del asistente | |
+| Pruebas (nuevas / totales) | |
+| Desviaciones respecto al prompt y su motivo | |
+| Estado final de C-02 | |
+
+---
+
+## 4. C-03 — La confirmación por voz no completa el registro
+
+### 4.1. Resultado entregado por la IA
+
+- En el flujo de C-01, el asistente lee el borrador ("Voy a registrar un gasto de … ¿Lo guardo?") y espera la respuesta.
+- Cuando el usuario dice "sí", el flujo no avanza: no anuncia "Gasto guardado" y no queda claro si el gasto se guardó.
+
+> Nota: igual que en C-02, el código del asistente de C-01 no está en `origin/dev` de FrontFinanzas al 2026-11-10. El prompt le pide al agente localizarlo y detenerse si no existe.
+
+### 4.2. Observación del equipo
+
+> "Cuando me pide confirmar un gasto que le digo por voz, por más que le digo que 'sí' a la confirmación, no continúa a confirmarme que ya lo registró."
+
+### 4.3. Diagnóstico
+
+El síntoma admite varias causas. El prompt exige reproducirlo con una prueba antes de corregir y revisar cada una:
+
+| # | Causa probable | Cómo se manifiesta |
+|---|---|---|
+| 1 | **El micrófono no se vuelve a abrir** después de la pregunta: la escucha de la respuesta no se inicia, o se inicia antes de que termine la locución y queda cancelada. | El "sí" nunca llega al asistente. |
+| 2 | **"Sí" no se reconoce como confirmación:** Azure devuelve "Sí.", "Si", "Sí, guárdalo" o "Claro", y la comparación es exacta, sin normalizar tildes y signos, o con una lista corta de sinónimos. | El "sí" llega, pero se interpreta como "no entendido". |
+| 3 | **La respuesta se interpreta sin contexto:** el "sí" pasa por el interpretador general en lugar de uno específico para el estado `awaiting_confirmation`. | Se ignora o se trata como otra intención. |
+| 4 | **Palabras de una sílaba:** el reconocedor de una sola frase descarta a veces respuestas muy cortas como "sí" por silencio inicial o fin de frase prematuro. | El resultado es `NoMatch` o queda vacío. |
+| 5 | **El guardado falla en silencio:** `TransactionRepo.save`, las alertas o la locución final lanzan un error que nadie atrapa y la máquina de estados queda detenida. | Nada se anuncia; el gasto puede quedar guardado o no. |
+| 6 | **La locución final se corta:** la exclusividad de audio (`SpeechSynthesisService.stop`) o un cambio de estado cancela el "Gasto guardado". | Se guarda, pero no se anuncia. |
+| 7 | **Eco:** el micrófono capta la propia pregunta del asistente ("¿Lo guardo?") y la toma como respuesta. | Se interpreta una frase que el usuario no dijo. |
+
+### 4.4. Decisiones del equipo para el ajuste
+
+1. **Prioridad alta:** es un defecto del flujo principal; se corrige antes de C-02.
+2. **Interpretación según el estado:** mientras espera confirmación, el asistente solo evalúa confirmar o cancelar, con una lista amplia y normalizada:
+   - Confirmar: "sí", "si", "sip", "claro", "dale", "listo", "ok", "okey", "correcto", "eso es", "hágale", "de una", "confirmo", "guárdalo", "afirmativo".
+   - Cancelar: "no", "nop", "cancela", "déjalo", "no lo guardes", "espera".
+3. **Siempre hay respuesta final hablada y visible:** "Gasto guardado", "Ingreso guardado", "No lo guardé" o "No pude guardar el gasto, inténtalo desde el formulario". Nunca un silencio.
+4. **Dos oportunidades:** si no entiende la respuesta, repregunta una vez ("¿Lo guardo? Responde sí o no"). Si vuelve a fallar, cancela sin guardar y lo dice.
+5. **Turnos ordenados:** la escucha de la respuesta empieza solo cuando terminó la locución de la pregunta (con una pausa breve, para evitar el eco). El botón "Confirmar" de la pantalla sigue como alternativa.
+6. Se mantiene la regla de C-01: **nada se guarda sin confirmación explícita**.
+
+### 4.5. Prompt de corrección
+
+```xml
+<role>
+Eres un ingeniero frontend senior experto en Angular 22, máquinas de estado con signals, interfaces de voz con Azure AI Speech y depuración guiada por pruebas (primero reproducir, luego corregir). Corriges un defecto sin romper lo que funciona y sigues `AGENTS.md`.
+</role>
+
+<context>
+Repositorio FrontFinanzas, rama `dev`. En la corrección C-01 (`BackFinanzas/docs/REPORTES-Y-DISCUSION.md` §2) entregaste un asistente de voz global que, al registrar un gasto, lee el borrador, pregunta "¿Lo guardo?" y debe guardar solo con una confirmación explícita.
+
+Defecto reportado (corrección C-03, §4 del mismo documento), textual:
+"Cuando me pide confirmar un gasto que le digo por voz, por más que le digo que 'sí' a la confirmación, no continúa a confirmarme que ya lo registró."
+
+Código a revisar:
+- Asistente de C-01: `src/app/features/asistente/` (dominio de intenciones, servicio orquestador con su máquina de estados y botón flotante).
+- `src/app/core/speech/speech-recognition.service.ts` (`listen()`, estados, cancelación) y `speech-synthesis.service.ts` (`speakOne`, `stop`, exclusividad de audio).
+- `src/app/core/speech/azure-speech-engine.ts` (reconocimiento de una sola frase).
+- `TransactionRepo.save`, `BudgetRepo.alertsAfterSave`, `SyncService.sync`.
+</context>
+
+<task>
+Corrige el flujo de confirmación por voz para que, al responder "sí" (o un sinónimo), el gasto o ingreso se guarde y el asistente lo anuncie siempre en voz alta y en pantalla. Ante cualquier otro desenlace también debe responder: cancelado, no entendido o error.
+</task>
+
+<instructions>
+1. **Reproduce primero.** Escribe una prueba del servicio orquestador con el `SpeechEngine` falso que haga: crear gasto → leer borrador → responder "Sí." → esperar "Gasto guardado" y el registro en Dexie + `outbox`. Debe fallar con el código actual. Anota en el reporte cuál de las causas de §4.3 la provoca (puede ser más de una).
+2. **Turnos ordenados:**
+   - La escucha de la respuesta empieza solo cuando termina la locución de la pregunta (`await` de la reproducción), con una pausa breve configurable (por ejemplo 300 ms) para evitar el eco.
+   - Ninguna llamada a `SpeechSynthesisService.stop()` ni un cambio de estado puede cortar la pregunta o el anuncio final del mismo flujo.
+3. **Interpretación según el estado:**
+   - En `awaiting_confirmation`, usa un interpretador dedicado `parseConfirmation(transcript)` → `'confirm' | 'cancel' | 'unknown'`, puro.
+   - Normaliza tildes, signos y mayúsculas, y acepta frases que empiezan por la respuesta ("sí, guárdalo", "no, espera").
+   - Usa las listas de sinónimos de §4.4.
+4. **Respuestas cortas:**
+   - Agrega "sí", "no" y sus sinónimos a la lista de frases (`PhraseListGrammar`) del reconocimiento de confirmación.
+   - Revisa los tiempos de silencio inicial y final del reconocedor para respuestas de una sílaba.
+   - Si el resultado es `NoMatch`, cuenta como "no entendido", no como error.
+5. **Dos oportunidades:** con "no entendido", repregunta una vez "¿Lo guardo? Responde sí o no". Si vuelve a fallar, responde "No lo guardé" y vuelve a reposo.
+6. **Respuesta final garantizada:**
+   - Envuelve guardado, alertas y sincronización en manejo de errores.
+   - Después de `TransactionRepo.save` anuncia "Gasto guardado" o "Ingreso guardado" y luego las alertas de presupuesto.
+   - Si algo falla, anuncia "No pude guardar el gasto, inténtalo desde el formulario" y abre `/movimientos/nuevo` prellenado.
+   - La máquina de estados siempre vuelve a `idle`, incluso con errores.
+7. **Pantalla:** el panel muestra lo que escuchó en la respuesta y el resultado final. El botón "Confirmar" lleva al mismo camino de guardado.
+8. **Documentación:**
+   - Añade en `BackFinanzas/docs/MVP2.md` §6.9 "Ajuste C-03" con la causa encontrada y el flujo corregido.
+   - Completa §4.6 "Resultado de la corrección" en `REPORTES-Y-DISCUSION.md`.
+</instructions>
+
+<constraints>
+- Es una corrección, no una historia nueva: no crees HU ni cambies la numeración de `MVP2.md`.
+- Nunca guardar sin una confirmación explícita (voz o botón). Un "no entendido" nunca guarda.
+- Sin dependencias nuevas ni cambios en el backend, el modelo de datos, Dexie o el `outbox`. El guardado sigue pasando por `TransactionRepo.save`.
+- No debilites ni borres pruebas existentes para que pasen.
+- Si C-02 ya cambió el interpretador general, el de confirmación sigue siendo independiente y tiene prioridad en `awaiting_confirmation`.
+</constraints>
+
+<tests>
+- Prueba de regresión del paso 1, ahora en verde.
+- `parseConfirmation`: "sí", "Sí.", "si", "sí, guárdalo", "claro", "dale", "ok" → confirm; "no", "No.", "no, espera", "cancela" → cancel; "tal vez", "" → unknown.
+- Flujo: confirmar → guarda y dice "Gasto guardado"; cancelar → "No lo guardé" y nada en Dexie; dos "no entendido" → "No lo guardé"; `NoMatch` → repregunta; error en `save` → mensaje de error, formulario prellenado y estado `idle`.
+- Turnos: la escucha empieza después de la locución; el anuncio final no se corta.
+- Botón "Confirmar" → mismo resultado que el "sí" hablado.
+- Las pruebas existentes de voz (HU16–HU19, C-01 y C-02 si existe) siguen en verde sin modificarlas.
+</tests>
+
+<stop_conditions>
+Detente y pregunta si no encuentras el código del asistente de C-01, si la causa exige tocar el backend o el modelo de datos, si necesitas una dependencia nueva o si una prueba existente falla por algo que no tocaste.
+</stop_conditions>
+
+<workflow>
+1. Lee este reporte (§2 y §4) y el código indicado.
+2. Escribe la prueba de regresión y confirma que falla.
+3. Presenta la causa encontrada y un plan corto, y espera aprobación.
+4. Corrige, con sus pruebas.
+5. Ejecuta `npm run lint`, `npm test` y `npm run build` (Node ≥ 22.22.3) y déjalos en verde.
+</workflow>
+
+<output_format>
+Reporte con el formato de `AGENTS.md`: Corrección C-03, causa raíz (con la prueba que la demostraba), Cambios, Pruebas, Comandos y resultado, Pendientes. Incluye una tabla con cada respuesta probada ("sí", "Sí.", "claro", "no", silencio…) y lo que hizo el asistente.
+</output_format>
+
+<verification>
+- [ ] La prueba de regresión fallaba antes y pasa después.
+- [ ] Decir "sí" guarda y anuncia "Gasto guardado" o "Ingreso guardado".
+- [ ] Cancelar, no entender o un error siempre producen una respuesta hablada y visible, y el estado vuelve a `idle`.
+- [ ] Nada se guarda sin confirmación explícita.
+- [ ] `MVP2.md` §6.9 y `REPORTES-Y-DISCUSION.md` §4.6 actualizados.
+- [ ] lint, test y build en verde.
+</verification>
+```
+
+### 4.6. Resultado de la corrección
+
+_Pendiente de ejecutar el prompt. Al aplicarlo, registrar aquí:_
+
+| Campo | Valor |
+|---|---|
+| Fecha de ejecución | |
+| Herramienta / modelo | |
+| Commit | |
+| Causa raíz encontrada (§4.3) | |
+| Respuestas probadas y resultado | |
+| Pruebas (nuevas / totales) | |
+| Desviaciones respecto al prompt y su motivo | |
+| Estado final de C-03 | |
+
+---
+
+## 5. Discusión: preguntas de la IA y decisiones del equipo
 
 Registro en orden cronológico de la sesión del 2026-11-10 (Claude Code, modelo Claude Opus 5.5). Las solicitudes y respuestas del equipo se citan textualmente.
 
-### 3.1. Resumen de decisiones
+### 5.1. Resumen de decisiones
 
 | # | Etapa | Pregunta o propuesta de la IA | Decisión del equipo | Dónde quedó |
 |---|---|---|---|---|
@@ -206,11 +519,13 @@ Registro en orden cronológico de la sesión del 2026-11-10 (Claude Code, modelo
 | D-04 | Implementación backend | Plan de implementación HU16–HU19 (modo plan, como exige `CLAUDE.md`). | **Plan aprobado** sin cambios. | Commit `8bd6fb8` |
 | D-05 | Revisión del backend | Dos decisiones por revisar: (a) ¿un intento que termina en 503 consume cuota? (b) ¿aplicar en `AGENTS.md`/`BLUEPRINT.md` la regla de errores 401/429/503? | **Tomar la opción recomendada y más profesional:** el 503 sí consume cuota y la regla se aplica. Además: **seguir con el frontend**. | `AGENTS.md`, `BLUEPRINT.md`, `MVP2.md` §6.4 |
 | D-06 | Publicación | (Sin pregunta) | **Commit y push en `dev`** de backend y frontend. | Commits `8bd6fb8` y `056c5cf` |
-| D-07 | Evaluación con la rúbrica | Faltantes frente a la rúbrica y oferta de completar la documentación. | Se dejó en espera: el equipo priorizó corregir la experiencia de voz (D-08). | §3.2, etapa 6 |
+| D-07 | Evaluación con la rúbrica | Faltantes frente a la rúbrica y oferta de completar la documentación. | Se dejó en espera: el equipo priorizó corregir la experiencia de voz (D-08). | §5.2, etapa 5 |
 | D-08 | Ajuste de la voz | Convertir el pedido del asistente global en dos prompts: especificar una **HU20** e implementarla. | **No es una HU nueva, es una corrección** al resultado entregado; crear un reporte de correcciones. | §2 (C-01) |
 | D-09 | Organización | ¿Subir el reporte a `dev` o ejecutar ya el prompt de C-01? | Primero **documentar las preguntas y decisiones** y renombrar el documento a "reportes y discusión". | Este documento |
+| D-10 | Precisión del asistente | Cómo lograr que el asistente "casi no falle": meta medible, desambiguación en lugar de "no te entendí", y mantener la interpretación local sin LLM. | Registrarlo como **corrección C-02** con el mismo formato que C-01. La opción de un servicio de NLU externo queda abierta para decidir si C-02 no alcanza la meta. | §3 (C-02) |
+| D-11 | Confirmación por voz | Tratarlo como defecto de prioridad alta: reproducirlo con una prueba, interpretar "sí" y "no" según el estado, dar dos oportunidades y anunciar siempre el resultado. | Registrarlo como **corrección C-03** con el mismo formato. Se ejecuta antes que C-02. | §4 (C-03) |
 
-### 3.2. Detalle por etapa
+### 5.2. Detalle por etapa
 
 #### Etapa 1 — Prompts de implementación por historia
 
@@ -284,9 +599,30 @@ Registro en orden cronológico de la sesión del 2026-11-10 (Claude Code, modelo
 #### Etapa 8 — Organización del flujo de trabajo
 
 - **Solicitud del equipo:** "listo a ese documento necesito que le agregues todas las preguntas que me hiciste y la decision que tomé esto para tener organizado como fue el flujo de trabajo, es decir lo que preguntabas y lo que yo decia, que este organizado y cambia el nombre del documento de reporte a: reportes y discusion"
-- **Resultado:** este documento, renombrado a `REPORTES-Y-DISCUSION.md`, con la sección §3.
+- **Resultado:** este documento, renombrado a `REPORTES-Y-DISCUSION.md`, con la sección de discusión (hoy §5).
 
-### 3.3. Decisiones que tomó la IA sin consulta previa (para validar)
+#### Etapa 9 — Precisión del asistente de voz
+
+- **Solicitud del equipo:** registrar como prompt de corrección, con el mismo formato, la siguiente observación: "No esta reconociendo lo que le digo correctamente y solo dice no te entendi, puedes hacer algo para que entienda mejor todas las instrucciones que le de? como leeme el ultimo gasto, el ultimo ingreso, todas las posibles solicitudes que haga un usuario, debes poder predecirlas para no caer tanto en esa respuesta de "no entendi" porque eso puede ser frustrante para el usuario asi que necesitamos que sea casi perfecto"
+- **Lo que hizo la IA:**
+  - Registró la **corrección C-02** (§3) con diagnóstico por capa (reconocimiento, normalización, interpretación, cobertura y respuesta de error) y un prompt de corrección.
+  - Tradujo "casi perfecto" a una meta medible: corpus de ≥ 200 frases, ≥ 95 % de intención correcta y 0 guardados sin confirmación.
+- **Lo que advirtió la IA:**
+  - El código del asistente de C-01 no está en `origin/dev` de FrontFinanzas, por eso el prompt le pide al agente localizarlo y detenerse si no existe.
+  - Se mantiene la interpretación local sin LLM, como exige `MVP2.md`. Si no alcanza la meta, un servicio de comprensión de lenguaje (por ejemplo Azure CLU) quedaría como corrección futura con aprobación del equipo (D-10).
+
+#### Etapa 10 — La confirmación por voz no completa el registro
+
+- **Solicitud del equipo:** registrar con el mismo formato la siguiente observación: "cuando me pide confirmar un gasto que le digo por voz, por mas que le digo que "si" a la confirmacion no continua a confirmarme que ya lo registró"
+- **Lo que hizo la IA:**
+  - Registró la **corrección C-03** (§4) como **defecto de prioridad alta**, por encima de C-02.
+  - Hizo un diagnóstico con siete causas posibles: micrófono que no se reabre, "sí" no normalizado, interpretación sin contexto, palabras de una sílaba, error de guardado sin manejar, locución final cortada y eco.
+  - Escribió un prompt que obliga a reproducir el defecto con una prueba antes de corregirlo.
+- **Lo que advirtió la IA:**
+  - El síntoma tiene varias causas posibles y sin el código de C-01 no se puede afirmar cuál es. Por eso el prompt pide demostrarla con una prueba que falle.
+  - Se mantiene la regla de no guardar sin confirmación explícita (D-11).
+
+### 5.3. Decisiones que tomó la IA sin consulta previa (para validar)
 
 | Decisión | Motivo | Riesgo / cómo revertir |
 |---|---|---|
