@@ -19,9 +19,11 @@ from sqlalchemy.pool import NullPool
 from app.config import Settings, get_settings
 from app.main import create_app
 from app.modules.auth.api import deps
+from app.modules.speech.api import deps as speech_deps
 from app.shared.db import get_session
 from tests.conftest import TEST_URL
 from tests.unit.auth.fakes import FakeLimiter, FakeMailer
+from tests.unit.speech.fakes import FakeSpeechProvider
 
 _bdd_scenario_mod = importlib.import_module("pytest_bdd.scenario")
 _orig_call_fixture_func = _bdd_scenario_mod.call_fixture_func
@@ -41,10 +43,17 @@ _bdd_scenario_mod.call_fixture_func = _async_call_fixture_func
 class AcceptanceEnv:
     """Entorno completo para una prueba de aceptación: cliente HTTP + fakes."""
 
-    def __init__(self, client: httpx.AsyncClient, mailer: FakeMailer, limiter: FakeLimiter) -> None:
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        mailer: FakeMailer,
+        limiter: FakeLimiter,
+        speech: FakeSpeechProvider | None = None,
+    ) -> None:
         self.client = client
         self.mailer = mailer
         self.limiter = limiter
+        self.speech = speech or FakeSpeechProvider()  # Azure AI Speech simulado (MVP 2)
         # Estado compartido entre pasos de un mismo escenario
         self.last_response: httpx.Response | None = None
         self.access_token: str | None = None
@@ -141,13 +150,15 @@ def env(migrated_database: None, event_loop: asyncio.AbstractEventLoop) -> Itera
             async with maker() as s:
                 yield s
 
-        limiter, mailer = FakeLimiter(), FakeMailer()
+        limiter, mailer, speech = FakeLimiter(), FakeMailer(), FakeSpeechProvider()
         app = create_app()
         app.dependency_overrides.update(
             {
                 get_session: session,
                 deps.get_limiter: lambda: limiter,
                 deps.get_mailer: lambda: mailer,
+                speech_deps.get_speech_counter: lambda: limiter,
+                speech_deps.get_speech_provider: lambda: speech,
                 get_settings: lambda: Settings(
                     jwt_secret="acceptance-secret-" + "x" * 32, cookie_secure=False
                 ),
@@ -155,7 +166,7 @@ def env(migrated_database: None, event_loop: asyncio.AbstractEventLoop) -> Itera
         )
         transport = httpx.ASGITransport(app=app)
         client = httpx.AsyncClient(transport=transport, base_url="http://test")
-        return AcceptanceEnv(client, mailer, limiter), client
+        return AcceptanceEnv(client, mailer, limiter, speech), client
 
     acc_env, client = event_loop.run_until_complete(_setup())
     yield acc_env

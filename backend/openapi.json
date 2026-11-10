@@ -41,6 +41,24 @@
         "title": "ChangeIn",
         "type": "object"
       },
+      "ErrorOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorOut",
+        "type": "object"
+      },
       "ForgotPasswordIn": {
         "additionalProperties": false,
         "properties": {
@@ -316,6 +334,39 @@
           "user"
         ],
         "title": "SessionOut",
+        "type": "object"
+      },
+      "SpeechTokenIn": {
+        "additionalProperties": false,
+        "description": "Cuerpo opcional y vacío: cualquier campo (voz, idioma, clave…) se rechaza con 422.",
+        "properties": {},
+        "title": "SpeechTokenIn",
+        "type": "object"
+      },
+      "SpeechTokenOut": {
+        "properties": {
+          "expires_in_seconds": {
+            "description": "Vigencia del token en segundos (máximo 600).",
+            "title": "Expires In Seconds",
+            "type": "integer"
+          },
+          "region": {
+            "description": "Región de Azure AI Speech, p. ej. 'eastus'.",
+            "title": "Region",
+            "type": "string"
+          },
+          "token": {
+            "description": "Token temporal para SpeechConfig.fromAuthorizationToken.",
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "region",
+          "expires_in_seconds"
+        ],
+        "title": "SpeechTokenOut",
         "type": "object"
       },
       "UserOut": {
@@ -706,6 +757,83 @@
         "summary": "Me",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/speech/token": {
+      "post": {
+        "description": "Devuelve un token temporal de Azure AI Speech para el reconocimiento (HU17) y la síntesis (HU18, HU19) en el navegador, sin exponer la clave de suscripción (HU16).",
+        "operationId": "issue_speech_token_speech_token_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SpeechTokenIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": " Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeechTokenOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sesión ausente o vencida."
+          },
+          "422": {
+            "description": "El cuerpo trae campos no permitidos."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Más de 30 tokens en la última hora (code SPEECH_RATE_LIMITED)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Azure AI Speech no configurado o caído (code SPEECH_SERVICE_UNAVAILABLE)."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Emitir token temporal de voz",
+        "tags": [
+          "speech"
         ]
       }
     },

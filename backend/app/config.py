@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     refresh_token_days: int = 30
     cookie_secure: bool = True
     frontend_url: str = "http://localhost:4200"
+    # Azure AI Speech (MVP 2, HU16). Opcionales: sin ellas el endpoint de voz responde 503.
+    azure_speech_key: SecretStr | None = None
+    azure_speech_region: str | None = None
+    azure_speech_token_timeout_seconds: float = 5.0
 
 
 @lru_cache

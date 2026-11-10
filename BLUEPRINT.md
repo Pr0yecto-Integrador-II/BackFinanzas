@@ -1287,7 +1287,7 @@ frontend/            Angular. Cada funcionalidad en src/app/features/<funcionali
   - Type hints en todo.
   - Dataclasses para el dominio y `Protocol` para los puertos.
   - Un caso de uso por clase, con método `execute`.
-- **Errores de dominio** con clase propia; la API los traduce a HTTP 422 con `code` y `message`.
+- **Errores de dominio** con clase propia; la API los traduce a HTTP 422 con `code` y `message`. Excepciones según la clase base de `app/shared/errors.py`: `UnauthorizedError` → 401, `TooManyRequestsError` → 429 y `ServiceUnavailableError` → 503 (servicio externo caído o sin configurar, p. ej. Azure AI Speech). Los límites de uso cuentan cada intento, también los que terminan en 503.
 - **Commits** con Conventional Commits en español, indicando la historia: `feat(transactions): registrar gasto sin conexión (HU04)`.
 
 ## Cuándo detenerte y preguntar

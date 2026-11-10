@@ -6,6 +6,9 @@ Aquí es el único lugar que conoce a la vez a `categories` y a los módulos que
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import Settings
+from app.container import get_redis
+from app.modules.auth.infrastructure.rate_limiter import RedisRateLimiter
 from app.modules.budgets.application.delete import DeleteBudget
 from app.modules.budgets.application.upsert import UpsertBudget
 from app.modules.budgets.infrastructure.category_lookup import (
@@ -30,6 +33,8 @@ from app.modules.recurring.infrastructure.category_referrer import RecurringCate
 from app.modules.recurring.infrastructure.changes import rule_changes
 from app.modules.recurring.infrastructure.repository import SqlRecurringRuleRepository
 from app.modules.recurring.infrastructure.rule_lookup import SqlRecurringRuleLookup
+from app.modules.speech.application.ports import RequestCounter, SpeechTokenProvider
+from app.modules.speech.infrastructure.azure_token_provider import AzureSpeechTokenProvider
 from app.modules.sync.application.ports import ChangesSource
 from app.modules.sync.application.pull import PullChanges
 from app.modules.sync.application.push import PushChanges
@@ -137,3 +142,17 @@ def push_changes(session: AsyncSession, clock: Clock) -> PushChanges:
 
 def pull_changes(session: AsyncSession) -> PullChanges:
     return PullChanges(_change_sources(session))
+
+
+def speech_token_provider(settings: Settings) -> SpeechTokenProvider:
+    key = settings.azure_speech_key
+    return AzureSpeechTokenProvider(
+        key.get_secret_value() if key else None,
+        settings.azure_speech_region,
+        settings.azure_speech_token_timeout_seconds,
+    )
+
+
+def speech_request_counter() -> RequestCounter:
+    """El límite de tokens de voz reutiliza el contador de Redis que ya usa `auth`."""
+    return RedisRateLimiter(get_redis())

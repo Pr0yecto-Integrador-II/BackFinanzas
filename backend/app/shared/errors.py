@@ -18,3 +18,7 @@ class UnauthorizedError(DomainError):
 
 class TooManyRequestsError(DomainError):
     """Se superó un límite de intentos. La API responde HTTP 429."""
+
+
+class ServiceUnavailableError(DomainError):
+    """Un servicio externo necesario no está disponible. La API responde HTTP 503."""
