@@ -1214,3 +1214,89 @@ src/app/features/movimientos/
 **Verificación:** `tsc` ✅ · ESLint ✅ · `ng test`: 138 pruebas en verde (31 de dominio de voz y 23 de servicios de voz con un motor falso) ✅ · `ng build` de producción sin advertencias ✅. El CLI de Angular 22 exige Node ≥ 22.22.3; en la máquina de desarrollo hay Node 22.19.0, así que los comandos se ejecutaron con `npx -p node@24`.
 
 **Pendiente:** probarlo de punta a punta en un navegador real con una clave de Azure AI Speech configurada en el backend (`AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION`). Las pruebas automáticas sustituyen el SDK por un motor falso.
+
+
+---
+
+## 7. HU20 · Asistente de voz global (ampliación del MVP 2)
+
+> Propuesta de historia nueva. `BLUEPRINT.md` no está en el repositorio, por eso se documenta aquí. Reutiliza HU16 (token), HU17 (parser de dictado), HU18/HU19 (lectura) sin cambiarlas.
+
+#### HU20. Hablarle a la app desde cualquier pantalla
+
+> **Como** usuario de la app de finanzas personales,
+> **quiero** un botón de voz siempre visible al que pueda pedirle cosas con mis propias palabras, y que me lea lo que entendió o hizo para confirmarlo hablando,
+> **para** consultar y registrar mis movimientos sin buscar pantallas ni usar el teclado.
+
+**Contexto:** HU17–HU19 viven cada una en su pantalla. HU20 las reúne en un único botón flotante global (`AssistantFab` en el shell) con un intérprete de órdenes en el navegador (`features/asistente`). El backend no cambia: usa `POST /speech/token` (HU16).
+
+**Reglas de negocio:**
+1. El botón está en todas las pantallas con sesión iniciada. Tocarlo empieza a escuchar; tocarlo de nuevo (o `Alt+V`) detiene la escucha y la voz.
+2. **Con conexión** interpreta la orden. **Sin conexión** el botón queda deshabilitado con "Los servicios de voz requieren conexión a internet"; el registro y la consulta manuales siguen intactos.
+3. Las órdenes se interpretan con reglas deterministas en el navegador (sin LLM ni servicios nuevos):
+
+| Intención | Ejemplos |
+|---|---|
+| Leer movimientos | "léeme los últimos 5 gastos", "léeme los últimos 3 ingresos", "léeme los gastos de ayer" (tope 20) |
+| Agregar | "agrega un nuevo gasto de 50000 porque comí en Crepes and Waffles hoy", "registra un ingreso de un millón por salario" |
+| Totales | "¿cuánto he gastado este mes?", "¿cuál es mi balance?", "¿cuánto gané la semana pasada?" |
+| Dónde más gasté | "¿en qué gasté más este mes?" |
+| Presupuesto | "¿cómo voy con el presupuesto de Alimentación?" |
+| Navegar | "ve a presupuestos", "abre gráficos" |
+| Eliminar | "elimina el último gasto" |
+| Control | "repite", "para", "¿qué puedo decir?" |
+
+4. **Nada se guarda ni se elimina sin un «sí» hablado.** Agregar y eliminar arman un borrador, lo leen ("Gasto de $50.000 en la categoría Alimentación, registrado hoy, concepto: Crepes and Waffles. ¿Es correcto?") y abren solos una escucha de sí/no. «No» cancela sin dejar rastro.
+5. Si la respuesta no se entiende, repite la pregunta **una vez**; sin respuesta, cancela ("No recibí respuesta. Lo cancelé").
+6. Al decir «sí» se guarda con la misma ruta de HU04/HU05 (`TransactionRepo.save`: Dexie + `outbox` en una transacción, montos en centavos, alertas de presupuesto de HU14). Eliminar usa `remove` + el "Deshacer" de 5 s de HU07.
+7. Si falta el monto, pregunta "¿De cuánto fue el gasto?" una vez; si sigue sin entenderse, abre el formulario de nuevo movimiento.
+8. Se aplican las validaciones del formulario: una fecha futura se rechaza hablando "La fecha no puede ser futura".
+9. La categoría se toma de la que se nombra o de palabras clave de las categorías predeterminadas ("comí", "almuerzo" → Alimentación; "taxi", "uber" → Transporte…). Si no hay pista, la última usada o "Otros gastos".
+
+```gherkin
+Escenario: Leer los últimos gastos
+  Dado que tengo conexión y estoy en "Presupuestos"
+  Cuando toco el botón de voz y digo "Léeme los últimos 5 gastos"
+  Entonces la app lee mis 5 gastos más recientes con el formato de HU18
+  Y no modifica ningún movimiento
+
+Escenario: Agregar un gasto y confirmarlo por voz
+  Dado que tengo conexión
+  Cuando digo "Agrega un nuevo gasto de 50000 porque comí en Crepes and Waffles hoy"
+  Entonces la app dice "Gasto de $50.000 en la categoría Alimentación, registrado hoy, concepto: Crepes and Waffles. ¿Es correcto?"
+  Y todavía no hay un movimiento nuevo
+  Cuando digo "sí"
+  Entonces el movimiento se guarda en Dexie y en el outbox y la app dice "Listo, gasto guardado"
+
+Escenario: Rechazar el borrador
+  Dado que la app me preguntó "¿Es correcto?"
+  Cuando digo "no"
+  Entonces la app dice "Cancelado, no guardé nada" y no se crea ningún movimiento
+
+Escenario: Orden no entendida
+  Cuando digo "qué buen día"
+  Entonces la app dice "No te entendí. Puedes decir, por ejemplo: léeme los últimos 5 gastos, o agrega un gasto de 50 mil en almuerzo"
+
+Escenario: Sin conexión
+  Dado que el dispositivo no tiene internet
+  Entonces el botón de voz está deshabilitado con "Los servicios de voz requieren conexión a internet"
+  Y puedo registrar movimientos manualmente
+```
+
+**Casos límite:** silencio o audio ininteligible, tocar el botón mientras habla (detiene todo y no guarda), micrófono denegado (mismos mensajes de HU17), límite de 30 tokens/hora (HU16), monto dicho como "50 mil" o "2 millones".
+
+**Fuera de alcance:** palabra de activación o escucha permanente, entender frases totalmente libres (LLM), editar un movimiento existente por voz, corregir un campo del borrador hablando (en v1 se cancela y se vuelve a dictar), voz sin conexión.
+
+**Implementación (FrontFinanzas, rama `dev`):**
+- `features/asistente/domain/{intents,answers,conversation}.ts`: dominio puro (intérprete, respuestas habladas, textos).
+- `features/asistente/data/assistant.service.ts`: orquesta escuchar → interpretar → ejecutar/preparar → hablar → confirmar.
+- `features/asistente/components/assistant-fab.*`: botón flotante montado en `layout/shell`.
+- `core/speech/speech-synthesis.service.ts`: nuevo `announce(text)`.
+- `features/movimientos/domain/voice.ts`: "50 mil", verbos nuevos ("comí", "agrega"), conectores ("porque") y sinónimos de categoría.
+
+**Comprensión de órdenes (ajuste posterior de HU20):**
+- **Tolerancia a la transcripción:** la frase se normaliza antes de interpretarla (sin tildes, sinónimos y variantes → forma canónica, errores de ortografía corregidos por distancia de edición, relleno de cortesía fuera). «Léeme», «leme», «lee me», «me lees», «léame», «dime» y «muéstrame» significan lo mismo; «gastoz» o «ingresoss» se entienden como «gastos» e «ingresos».
+- **Más órdenes:** el último/los últimos N (gasto, ingreso o movimiento, con filtro por día, semana, mes, últimos 7/30 días, año o total y por categoría), «cuántos», el mayor gasto/ingreso, comparar con el mes o la semana anterior, totales por categoría, saludo y agradecimiento.
+- **No se rinde a la primera:** si no entiende, dice qué escuchó («No te entendí. Escuché: …»), vuelve a escuchar **sola** una vez y solo después da ejemplos. Si no oyó nada: «No te escuché bien. ¿Puedes repetirlo?».
+- **Reconocimiento de Azure:** el micrófono avisa con un pitido cuando ya captura (antes se perdía el comienzo de la frase), se toleran pausas de 1,5 s y se le pasan a Azure las palabras esperadas (comandos y nombres de las categorías del usuario) para sesgar la transcripción.
+- **Regresión:** `features/asistente/domain/intents.spec.ts` es la lista de frases que debe entender; toda frase real que falle se agrega ahí.
