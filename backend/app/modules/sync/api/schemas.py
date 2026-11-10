@@ -3,6 +3,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+MAX_VERSION = 2**63 - 1  # tope de BIGINT: más allá, la base daría error
 MAX_CHANGES = 500  # D-12: acota la transacción y el bloqueo por usuario
 
 

@@ -3,10 +3,10 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.sync.domain.errors import StorageConflictError
+from app.modules.sync.domain.errors import InvalidChangeError, StorageConflictError
 
 
 class SqlSavepoint:
@@ -20,6 +20,8 @@ class SqlSavepoint:
                 yield
         except IntegrityError as exc:
             raise StorageConflictError from exc
+        except DataError as exc:  # valor fuera de rango o no representable en la columna
+            raise InvalidChangeError from exc
 
 
 class AdvisoryUserLock:
