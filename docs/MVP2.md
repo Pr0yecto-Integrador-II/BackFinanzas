@@ -177,6 +177,98 @@ Antes de entregar, razona dentro de `<thinking>` (sin incluir ese razonamiento e
 - [ ] El comportamiento sin conexión está explicitado en todas las historias.
 </verification>
 
+## Prompt para refinar y tareas tecnicas
+<role>
+Eres un ingeniero de prompts y arquitecto técnico senior especializado en especificación de producto asistida por IA. Dominas la estructura de prompts XML del proyecto (`PROMPTS.md`), la priorización y clasificación de historias de usuario (`BLUEPRINT.md`), y la descomposición técnica para arquitecturas FastAPI hexagonales y Angular PWA offline-first (`AGENTS.md` y `DOCUMENTACIONMVP.md`).
+</role>
+
+<context>
+Ya contamos con un primer prompt para redactar las historias de usuario del MVP 2 (servicios de voz bidireccionales con `microsoft-cognitiveservices-speech-sdk` sobre el MVP 1 de la app de finanzas personales), pero actualmente solo genera el mapa de historias y el detalle en formato Connextra con escenarios Gherkin.
+
+Necesitamos evolucionar ese prompt para que también genere la clasificación por apoyo de IA, la priorización MoSCoW, la estimación de esfuerzo y las tareas técnicas por capa; y además queremos conocer de antemano qué tareas técnicas concretas se derivarán al ejecutarlo sobre el repositorio actual.
+</context>
+
+<documents>
+<document index="1">
+<source>docs/MVP2.md (secciones 1–3 y "Primeros prompts para HU")</source>
+<document_content>
+{{PEGA_AQUI_EL_PROMPT_INICIAL_DE_docs/MVP2.md}}
+</document_content>
+</document>
+<document index="2">
+<source>docs/PROMPTS.md (sección 1: buenas prácticas XML y Prompt adicional de clasificación/priorización)</source>
+<document_content>
+{{PEGA_AQUI_LAS_SECCIONES_RELEVANTES_DE_docs/PROMPTS.md}}
+</document_content>
+</document>
+<document index="3">
+<source>BLUEPRINT.md (tabla de clasificación, prioridad y esfuerzo del MVP 1)</source>
+<document_content>
+{{PEGA_AQUI_LA_TABLA_DE_CLASIFICACION_DE_BLUEPRINT.md}}
+</document_content>
+</document>
+<document index="4">
+<source>AGENTS.md y docs/DOCUMENTACIONMVP.md</source>
+<document_content>
+{{PEGA_AQUI_AGENTS.md_Y_DOCUMENTACIONMVP.md}}
+</document_content>
+</document>
+</documents>
+
+<task>
+A partir del prompt inicial y la documentación del proyecto, entrega dos resultados en orden:
+1. **El prompt refinado completo** (listo para usar), mejorando el prompt inicial para que exija explícitamente:
+   - La **clasificación de IA** (Puntos IA `0–5` y rango Tradicional / Híbrida / Implementable principalmente con IA), la **prioridad MoSCoW** (`Must`, `Should`, `Could`, `Won't`), la **estimación de esfuerzo/tiempo** (`1–10`) y su justificación por historia, usando la escala exacta del proyecto.
+   - El **desglose de tareas técnicas derivadas por historia**, separadas por Backend (FastAPI hexagonal), Frontend (Angular: dominio puro, adaptador del SDK, UI standalone `OnPush` con Signals, Dexie/`outbox`, accesibilidad) y Contrato/Calidad (`openapi.json`, `ng-openapi-gen`, pruebas).
+   - Un ejemplo (`<examples>`) actualizado que muestre tanto la tabla de clasificación/estimación como una historia Connextra con sus tareas técnicas derivadas.
+2. **El listado de tareas técnicas que salen a partir del prompt refinado** al aplicarlo sobre la arquitectura actual (`AGENTS.md` y `DOCUMENTACIONMVP.md`), agrupado por bloques operativos:
+   - Backend (`FastAPI`): autorización segura de Azure Speech.
+   - Frontend (`Angular`): capa de voz e integración con `microsoft-cognitiveservices-speech-sdk` + lógica pura de dominio.
+   - Frontend (`Angular`): UI y persistencia offline-first.
+   - Calidad y pruebas (`pytest`, `ruff`, `mypy`, `Vitest`, `lint`, `test:ci`, `build`).
+</task>
+
+<instructions>
+Para construir el **prompt refinado**:
+1. Conserva todas las etiquetas XML estándar de `PROMPTS.md`: `<role>`, `<context>`, `<documents>`, `<task>`, `<instructions>`, `<constraints>`, `<examples>`, `<stop_conditions>`, `<output_format>` y `<verification>`.
+2. Eleva el `<role>` a analista de producto y arquitecto técnico senior para que pueda especificar tanto el QUÉ funcional como la descomposición técnica.
+3. Añade `AGENTS.md` dentro de `<documents>` como fuente obligatoria para las reglas de capas, `amount_minor`, `Clock`, Dexie + `outbox`, `extra="forbid"` y manejo de secretos.
+4. En `<instructions>`, separa claramente dos subsecciones:
+   - Reglas para clasificación, priorización y estimación (exactamente las de `PROMPTS.md` y `BLUEPRINT.md`).
+   - Reglas para cada historia en formato Connextra (`Como / quiero / para` en cita, contexto, reglas numeradas con tabla, ≥4 escenarios Gherkin incluyendo sin conexión, casos límite y fuera de alcance) más decisiones no negociables del MVP 1 y MVP 2.
+5. En `<constraints>`, agrega la trazabilidad entre reglas de negocio, pruebas y tareas técnicas, y prohíbe inventar dependencias distintas a `microsoft-cognitiveservices-speech-sdk` sin justificación.
+6. Actualiza `<output_format>` y `<verification>` para incluir la tabla de clasificación/estimación, las tareas por capa en cada historia y un resumen consolidado final.
+
+Para responder **qué tareas técnicas salen a partir del prompt**:
+- Derívalas directamente de los módulos y convenciones reales descritos en `AGENTS.md` y `DOCUMENTACIONMVP.md` (sin inventar rutas o herramientas que no existan en el proyecto).
+- Asegúrate de cubrir: emisión segura de token temporal en backend (sin secretos en `environment.ts`), regeneración del cliente con `ng-openapi-gen`, encapsulación de `SpeechRecognizer` y `SpeechSynthesizer`, parser y formateador puros en dominio, persistencia transaccional en Dexie + `outbox`, degradación offline, accesibilidad (`aria-live`) y puertas de calidad.
+</instructions>
+
+<constraints>
+- El prompt refinado debe entregarse completo en un bloque listo para copiar, sin omitir secciones ni usar resúmenes tipo "...".
+- Mantén coherencia estricta con la escala de Puntos IA (`0–5`), MoSCoW y Esfuerzo (`1–10`) de `BLUEPRINT.md`.
+- No incluyas secretos ni claves reales de Azure en ningún ejemplo o tarea técnica.
+- No cambies las reglas de negocio del MVP 1 (`HU01`–`HU15`).
+</constraints>
+
+<stop_conditions>
+Si alguno de los documentos de entrada (`PROMPTS.md`, `BLUEPRINT.md`, `AGENTS.md`, `DOCUMENTACIONMVP.md` o el prompt inicial) falta o presenta reglas contradictorias sobre la escala de estimación o la arquitectura, detente y pregunta antes de generar el prompt refinado.
+</stop_conditions>
+
+<output_format>
+Responde en Markdown con estas dos partes:
+1. El prompt refinado completo dentro de un bloque XML (` ```xml ` o ` ````xml ` si contiene bloques Gherkin internos).
+2. Una sección titulada `¿Qué tareas técnicas salen a partir de este prompt?` con los cuatro bloques de tareas técnicas derivadas sobre `AGENTS.md` y `DOCUMENTACIONMVP.md`.
+</output_format>
+
+<verification>
+Antes de entregar, verifica internamente dentro de `<thinking>` (sin mostrarlo en la respuesta final):
+- [ ] El prompt refinado usa todas las etiquetas XML de `PROMPTS.md`.
+- [ ] Incorpora clasificación (Puntos IA 0–5), MoSCoW, esfuerzo (1–10) y tareas técnicas por capa.
+- [ ] Exige formato Connextra (`Como / quiero / para`), ≥4 escenarios Gherkin y manejo explícito sin conexión.
+- [ ] El ejemplo dentro de `<examples>` muestra tabla de estimación + historia Connextra + tareas técnicas.
+- [ ] La sección de tareas técnicas derivadas está alineada con FastAPI hexagonal, Angular `OnPush`/Signals, Dexie + `outbox`, `ng-openapi-gen` y los comandos de verificación del proyecto.
+</verification>
 
 ## Refinados y tareas tecnicas - Respuestas
 
