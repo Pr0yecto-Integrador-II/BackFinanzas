@@ -708,3 +708,417 @@ Escenario: Pérdida de conexión durante la lectura secuencial
 | **Frontend — Dominio Movimientos** | `frontend/src/app/features/movimientos/domain/` | Parser determinista de dictado a borrador (`amount_minor`, `name_key`, `Clock`) y formateador/cola de locución en español. | HU17, HU18, HU19 |
 | **Frontend — UI y Repositorios** | `frontend/src/app/features/movimientos/{pages,components}/` | Botón `"Dictar movimiento"`, prellenado de formulario con confirmación hacia Dexie/`outbox`, botón `"Escuchar movimiento"` y barra `VoicePlayerBarComponent` (`OnPush`, Signals, `@if`, `aria-live`). | HU17, HU18, HU19 |
 | **Frontend — Calidad y Pruebas** | `*.spec.ts` (Vitest) | Pruebas unitarias de dominio y pruebas de servicios/componentes con mocks del SDK (`npm run lint`, `npm run test:ci`, `npm run build`). | HU16–HU19 |
+
+---
+
+## 5. Prompts de implementación por historia (BackFinanzas)
+
+> **Uso:** cada prompt es autocontenido y se entrega a un agente de código (Claude Code, Codex, etc.) abierto en la raíz del repositorio **BackFinanzas** (rama `dev`). Implementa una historia por sesión y en orden: **HU16 → HU17 → HU18 → HU19** (HU17–HU19 dependen del contrato de HU16).
+>
+> **Alcance del repositorio:** BackFinanzas solo contiene el backend (FastAPI). Las tareas de Angular/Dexie/SDK descritas en la sección 4.3 viven en el repositorio **FrontFinanzas** y quedan fuera de estos prompts; aquí se implementa y verifica el **lado servidor** de cada historia (contrato, seguridad, sincronización y pruebas de regresión).
+
+### 5.1. Prompt HU16 — Autorización segura y disponibilidad del servicio de voz
+
+```xml
+<role>
+Eres un ingeniero backend senior experto en Python 3.12, FastAPI, Pydantic v2, Redis y arquitectura hexagonal (monolito modular). Escribes código tipado (`mypy --strict`), probado con pytest y seguro por defecto. Sigues al pie de la letra las reglas de `AGENTS.md`.
+</role>
+
+<context>
+Repositorio: BackFinanzas (rama `dev`). Backend FastAPI + PostgreSQL + Redis organizado en `backend/app/modules/<módulo>/{api,application,domain,infrastructure}` (módulos existentes: auth, categories, transactions, recurring, budgets, sync).
+El MVP 2 añade servicios de voz con `microsoft-cognitiveservices-speech-sdk` en el frontend. Para no exponer la clave de Azure AI Speech en el navegador, el backend debe emitir un token temporal a usuarios autenticados. Esta historia es habilitadora: HU17, HU18 y HU19 dependen de ella.
+
+Piezas existentes que DEBES reutilizar (no reimplementar):
+- `app/shared/clock.py` → `Clock` (Protocol) y `SystemClock`.
+- `app/modules/auth/application/ports.py` → `RateLimiter` (Protocol) y `app/modules/auth/infrastructure/rate_limiter.py` → `RedisRateLimiter.incr(key, window_seconds)`.
+- `app/modules/auth/api/deps.py` → dependencia que resuelve el usuario autenticado desde el JWT.
+- `app/config.py` → `Settings` (pydantic-settings), `app/composition.py` (ensamblado de casos de uso) y `app/main.py` (registro de routers).
+</context>
+
+<documents>
+- `docs/MVP2.md` → sección `#### HU16. Autorización segura y disponibilidad del servicio de voz` (reglas 1–6, criterios Gherkin, casos límite, tareas técnicas). Léela completa antes de empezar.
+- `AGENTS.md` → reglas que no se rompen, convenciones y formato de reporte.
+- `BLUEPRINT.md` → solo la sección `#### HU02` (sesión JWT) y el apartado de errores de API.
+</documents>
+
+<task>
+Implementa el lado servidor de HU16: un nuevo módulo `speech` que expone `POST /speech/token`, protegido por JWT, que devuelve `{token, region, expires_in_seconds}` obtenido desde el STS de Azure AI Speech, con límite de 30 solicitudes por hora por `user_id` y degradación controlada (HTTP 503) cuando el proveedor no está configurado o falla.
+</task>
+
+<instructions>
+Trabaja de adentro hacia afuera y escribe las pruebas junto al código:
+
+1. **Configuración** (`app/config.py`, `backend/.env.example`):
+   - Añade `azure_speech_key: SecretStr | None = None`, `azure_speech_region: str | None = None`, `azure_speech_token_timeout_seconds: float = 5.0`. Deben ser opcionales: la app arranca sin ellas.
+   - Documenta las variables en `.env.example` con valores vacíos (nunca un secreto real).
+2. **Dominio** (`app/modules/speech/domain/`): dataclass inmutable `SpeechToken(token: str, region: str, expires_in_seconds: int)` con `expires_in_seconds` ≤ 600; errores propios `SpeechUnavailableError` (code `SPEECH_SERVICE_UNAVAILABLE`) y `SpeechRateLimitError` (code `SPEECH_RATE_LIMITED`). Sin imports de FastAPI, Pydantic, httpx ni Redis.
+3. **Aplicación** (`app/modules/speech/application/`):
+   - Puerto `SpeechTokenProvider(Protocol)` con `async def issue(self) -> SpeechToken`.
+   - Caso de uso `IssueSpeechToken` con método `execute(user_id: UUID) -> SpeechToken`: primero incrementa el contador `speech:token:{user_id}` con ventana de 3600 s usando el `RateLimiter` existente; si supera 30 → `SpeechRateLimitError`; luego delega en el proveedor.
+4. **Infraestructura** (`app/modules/speech/infrastructure/`): adaptador `AzureSpeechTokenProvider` que hace `POST https://{region}.api.cognitive.microsoft.com/sts/v1.0/issueToken` con cabecera `Ocp-Apim-Subscription-Key`, timeout configurado, y devuelve `SpeechToken(token, region, 600)`. Traduce: credenciales ausentes, timeout, error de red o status ≠ 200 → `SpeechUnavailableError`. Nunca registres en logs la clave ni el token.
+5. **API** (`app/modules/speech/api/`): router `POST /speech/token` con esquema de entrada vacío `extra="forbid"` (rechaza cualquier campo con 422), esquema de salida `SpeechTokenOut`, `user_id` tomado **solo** del JWT. Traducción de errores: `SpeechRateLimitError` → 429, `SpeechUnavailableError` → 503, ambos con cuerpo `{code, message}` según el formato de errores del proyecto. Añade `Cache-Control: no-store` a la respuesta.
+6. **Composición**: ensambla el caso de uso en `composition.py` y registra el router en `main.py`.
+7. **Contrato**: exporta `backend/openapi.json` actualizado con el script existente en `backend/scripts/`.
+</instructions>
+
+<constraints>
+- El cliente HTTP para Azure requiere `httpx`, que hoy solo está en el grupo `dev` de `pyproject.toml`. Según `AGENTS.md` no agregues ni muevas dependencias sin preguntar: **detente y pide autorización** para mover `httpx` a `dependencies` antes de escribir el adaptador.
+- No crees tablas ni migraciones: esta historia no persiste nada en PostgreSQL.
+- Nada de `datetime.now()`/`date.today()` en dominio o aplicación; usa `Clock` si necesitas tiempo.
+- No uses el SDK de voz en el backend; solo el endpoint REST de STS.
+- No implementes nada marcado como "Fuera de alcance" en HU16 (configuración manual de región/clave, métricas de uso, voz offline).
+</constraints>
+
+<tests>
+Cubre cada regla y escenario Gherkin con al menos una prueba:
+- `tests/unit/speech/`: `IssueSpeechToken` con fakes (`FakeRateLimiter`, `FakeSpeechTokenProvider`): emisión exitosa, intento 31 → `SpeechRateLimitError` sin llamar al proveedor, proveedor caído → `SpeechUnavailableError`.
+- `tests/integration/speech/`: endpoint con `httpx.MockTransport` simulando Azure + Redis real de `docker compose`: 200 con `token`/`region`/`expires_in_seconds` y sin la clave en la respuesta; 401 sin JWT; 422 con body extra; 429 tras 30 solicitudes; 503 sin credenciales; 503 por timeout.
+- `tests/security/`: la respuesta y los logs capturados (`caplog`) no contienen el valor de `AZURE_SPEECH_KEY`.
+- Recomendado: `tests/acceptance/features/speech/token.feature` con pytest-bdd reutilizando los escenarios Gherkin de HU16.
+</tests>
+
+<stop_conditions>
+Detente y pregunta antes de continuar si:
+- Necesitas mover/añadir una dependencia (caso esperado: `httpx`).
+- El formato de errores existente no permite un `code` distinto para 429/503.
+- Una prueba existente falla por algo que no tocaste.
+- Detectas contradicción entre `docs/MVP2.md`, `BLUEPRINT.md` y `AGENTS.md`.
+</stop_conditions>
+
+<workflow>
+1. Lee la historia y el código de `auth` (rate limiter y deps) y `composition.py`.
+2. Presenta un plan corto por capa (archivos a crear/modificar) y espera aprobación.
+3. Implementa dominio → aplicación → infraestructura → API con sus pruebas.
+4. Ejecuta en `backend/`: `uv run ruff check . && uv run ruff format --check . && uv run mypy app && uv run pytest` y déjalos en verde.
+</workflow>
+
+<output_format>
+Entrega el reporte exacto definido en `AGENTS.md` (Historia, Cambios, Pruebas y cobertura, Criterio → prueba, Comandos ejecutados, Pendientes). Indica explícitamente que FrontFinanzas debe regenerar su cliente con `ng-openapi-gen`.
+</output_format>
+
+<verification>
+Antes de reportar, comprueba:
+- [ ] `POST /speech/token` devuelve solo `token`, `region`, `expires_in_seconds` (≤ 600).
+- [ ] La clave nunca aparece en respuestas, logs, `openapi.json` ni `.env.example`.
+- [ ] 401, 422, 429 y 503 cubiertos con pruebas.
+- [ ] `user_id` proviene únicamente del JWT.
+- [ ] El dominio no importa FastAPI/Pydantic/httpx/Redis; ruff, mypy y pytest en verde.
+</verification>
+```
+
+### 5.2. Prompt HU17 — Registrar movimiento mediante dictado de voz
+
+```xml
+<role>
+Eres un ingeniero backend senior experto en FastAPI, arquitectura hexagonal, sincronización offline-first (outbox push/pull) y pruebas de contrato con pytest y pytest-bdd. Priorizas no romper reglas de dominio ya cerradas.
+</role>
+
+<context>
+Repositorio: BackFinanzas (rama `dev`). HU16 ya está implementada (`POST /speech/token`).
+En HU17 el usuario dicta un gasto/ingreso en la PWA; el frontend (repositorio FrontFinanzas) transcribe con `SpeechRecognizer`, interpreta el texto a un borrador, el usuario confirma y el movimiento se guarda en Dexie + `outbox`. Ese movimiento llega al backend por el **flujo de sincronización existente** (`app/modules/sync` → `push` → `app/modules/transactions/application/upsert.py`), exactamente igual que uno creado manualmente (HU04/HU05).
+Por tanto, el trabajo backend de HU17 NO es crear un endpoint nuevo, sino **garantizar y demostrar con pruebas** que los movimientos producidos por dictado cumplen el contrato y las reglas actuales, y que el token de voz sirve para el reconocimiento.
+</context>
+
+<documents>
+- `docs/MVP2.md` → sección `#### HU17. Registrar movimiento mediante dictado de voz` (en especial la tabla de interpretación de la regla 4 y los escenarios Gherkin).
+- `BLUEPRINT.md` → solo `#### HU04`, `#### HU05`, `#### HU08` (`name_key`) y `#### HU14` (alertas de presupuesto), más el modelo de datos de movimientos.
+- `AGENTS.md`.
+- Código: `app/modules/transactions/{domain,application}`, `app/modules/sync/application/push.py`, `tests/unit/transactions/`, `tests/acceptance/features/sync/movimientos.feature`.
+</documents>
+
+<task>
+Implementa el lado servidor de HU17 como pruebas de regresión y contrato sobre el flujo existente, corrigiendo el backend solo si alguna prueba revela una brecha frente a las reglas de HU04/HU05/HU17.
+</task>
+
+<instructions>
+1. **Análisis previo:** revisa las reglas de dominio de `transactions` (`rules.py`, `entities.py`, `errors.py`) y confirma que validan: `amount_minor` entero > 0 y ≤ 13 dígitos, `type` en {`expense`, `income`}, categoría activa del mismo tipo y del mismo `user_id`, `occurred_on` no futura según `Clock`, `description` ≤ 100 caracteres.
+2. **Pruebas de aceptación** (`tests/acceptance/features/speech/dictado.feature` + steps con pytest-bdd), traduciendo los escenarios de HU17 a payloads de `push`:
+   - "Gasté veinticinco mil pesos en almuerzo en Alimentación" → push con `type=expense`, `amount_minor=2500000`, categoría "Alimentación", `description="Almuerzo"`, fecha de hoy → aceptado y visible en `pull` con `version` asignada por el servidor.
+   - "Recibí tres millones quinientos mil pesos de Salario" → `type=income`, `amount_minor=350000000` → aceptado.
+   - Borrador sin monto o con monto 0/negativo → rechazado con el error de dominio existente (sin crear registro).
+   - Fecha futura → rechazado con el error existente.
+   - Reenvío del mismo UUID (doble pulsación de "Guardar" / reintento de outbox) → idempotente, no duplica.
+3. **Pruebas unitarias** de `UpsertTransaction` solo para casos límite de HU17 no cubiertos hoy (descripción de 100 vs 101 caracteres, monto de 13 vs 14 dígitos, categoría de tipo opuesto).
+4. **Contrato de voz:** añade una prueba de integración que confirme que `POST /speech/token` es reutilizable para STT (la respuesta contiene `region` utilizable con `SpeechConfig.fromAuthorizationToken`) sin parámetros adicionales.
+5. Si alguna prueba falla por una brecha real del backend, corrígela en la capa correcta (dominio primero) y documenta el porqué en el reporte.
+</instructions>
+
+<constraints>
+- **No** agregues campos nuevos al modelo (`source="voice"`, transcripción, audio, etc.) ni migraciones: el dictado no cambia el modelo de datos. Si crees que hace falta, detente y pregunta.
+- **No** crees un endpoint de parsing de texto en el servidor: la interpretación del dictado es dominio puro del frontend según `docs/MVP2.md`.
+- No almacenes ni registres transcripciones de voz en el backend.
+- No debilites validaciones existentes para que un caso de voz pase.
+- Fuera de alcance: guardado automático, edición/eliminación por voz, recurrentes (HU09), etiquetas (HU10), wake-word.
+</constraints>
+
+<stop_conditions>
+Detente y pregunta si: una regla de HU17 contradice HU04/HU05 en `BLUEPRINT.md`; la corrección requiere cambiar el protocolo de sincronización o el modelo; o una prueba existente falla por algo que no tocaste.
+</stop_conditions>
+
+<workflow>
+1. Lee historia, reglas de dominio y pruebas existentes de `transactions` y `sync`.
+2. Presenta un plan corto (pruebas a crear y posibles correcciones) y espera aprobación.
+3. Escribe las pruebas primero; implementa correcciones solo si alguna falla por una brecha real.
+4. Ejecuta `uv run ruff check . && uv run ruff format --check . && uv run mypy app && uv run pytest` en `backend/` y déjalo en verde.
+</workflow>
+
+<output_format>
+Reporte según `AGENTS.md`. Añade una tabla "Escenario HU17 → prueba backend" y la lista de tareas que quedan para FrontFinanzas (parser `parseVoiceTransactionDraft`, `SpeechRecognitionService`, UI "Dictar movimiento").
+</output_format>
+
+<verification>
+- [ ] Cada escenario Gherkin de HU17 con impacto en servidor tiene una prueba.
+- [ ] `amount_minor` siempre entero en centavos; sin `float`.
+- [ ] Idempotencia por UUID verificada.
+- [ ] Sin cambios de modelo, migraciones ni endpoints nuevos (o justificados y aprobados).
+- [ ] ruff, mypy y pytest en verde.
+</verification>
+```
+
+### 5.3. Prompt HU18 — Escuchar detalle de un movimiento en voz alta
+
+```xml
+<role>
+Eres un ingeniero backend senior experto en FastAPI, seguridad de APIs y pruebas de contrato. Distingues qué responsabilidad pertenece al cliente y cuál al servidor, y evitas sobreconstruir.
+</role>
+
+<context>
+Repositorio: BackFinanzas (rama `dev`). HU16 y HU17 ya están implementadas.
+En HU18 el usuario pulsa "Escuchar movimiento" y la PWA (FrontFinanzas) formatea el movimiento a texto en español con `formatTransactionForSpeech` y lo sintetiza con `SpeechSynthesizer` usando el token temporal de `POST /speech/token`. Los datos se leen desde Dexie (local), no desde un endpoint nuevo.
+El backend solo participa emitiendo el token. El objetivo es **asegurar que el contrato y las políticas de HU16 soportan correctamente el uso TTS** (lecturas frecuentes, reutilización del token, errores claros), sin añadir superficie innecesaria.
+</context>
+
+<documents>
+- `docs/MVP2.md` → secciones `#### HU18` y `#### HU16`.
+- `AGENTS.md`.
+- Código: `app/modules/speech/**` y sus pruebas en `tests/`.
+</documents>
+
+<task>
+Verifica y, si es necesario, ajusta el módulo `speech` para cubrir el uso Text-to-Speech de HU18, documentando el contrato para el frontend.
+</task>
+
+<instructions>
+1. **Pruebas de contrato TTS** (`tests/integration/speech/test_speech_tts_contract.py`):
+   - El token emitido es independiente del uso (STT o TTS): una sola llamada sirve para ambos; el endpoint no acepta un parámetro `mode`/`voice` (422 por `extra="forbid"`).
+   - Escenario "Fallo del servicio de síntesis": cuando Azure STS falla, la respuesta es 503 con `code="SPEECH_SERVICE_UNAVAILABLE"` y `message` en español, apta para que el cliente muestre "No se pudo reproducir el movimiento. Intenta nuevamente".
+   - La respuesta incluye `Cache-Control: no-store` y no expone la clave.
+2. **Documentación OpenAPI:** completa `summary`, `description` y `responses` (200, 401, 422, 429, 503) del endpoint en el router para que `ng-openapi-gen` genere tipos de error útiles; vuelve a exportar `backend/openapi.json`.
+3. **Prueba de aceptación** (`tests/acceptance/features/speech/lectura.feature`): "Obtener autorización para leer un movimiento" (200) y "Servicio de síntesis no disponible" (503).
+4. Si encuentras huecos en HU16 que afecten HU18 (p. ej. falta `no-store`, mensajes en inglés, códigos de error inconsistentes), corrígelos en la capa correspondiente y justifícalo.
+</instructions>
+
+<constraints>
+- **No** crees endpoints de síntesis en el servidor, ni proxies de audio, ni endpoints para leer un movimiento "formateado": el formateo es dominio puro del frontend y los datos salen de Dexie.
+- No cambies la vigencia (600 s), el límite (30/h) ni la forma de la respuesta de `POST /speech/token`.
+- No selecciones voz (`es-CO-SalomeNeural`) en el backend; es configuración del cliente.
+- Fuera de alcance: descarga MP3, selección de voces/velocidades, lectura de gráficos (HU15) o presupuestos (HU14).
+</constraints>
+
+<stop_conditions>
+Detente y pregunta si consideras necesario que el backend devuelva voz/locale, si el límite de 30/h parece insuficiente para el uso TTS esperado, o si una prueba existente falla por algo que no tocaste.
+</stop_conditions>
+
+<workflow>
+1. Lee HU18 y el módulo `speech`.
+2. Presenta un plan corto y espera aprobación.
+3. Escribe pruebas, ajusta solo lo necesario y exporta `openapi.json`.
+4. Ejecuta `uv run ruff check . && uv run ruff format --check . && uv run mypy app && uv run pytest` en `backend/`.
+</workflow>
+
+<output_format>
+Reporte según `AGENTS.md`, más una sección "Contrato para FrontFinanzas" con un ejemplo de respuesta 200 y de error 503 (sin token real) y la lista de tareas frontend pendientes (`formatTransactionForSpeech`, `SpeechSynthesisService`, botón "Escuchar movimiento"/"Detener lectura").
+</output_format>
+
+<verification>
+- [ ] Sin endpoints nuevos ni cambios en el modelo de datos.
+- [ ] 200/401/422/429/503 documentados en OpenAPI y probados.
+- [ ] Mensajes de error en español con `code` estable.
+- [ ] ruff, mypy y pytest en verde.
+</verification>
+```
+
+### 5.4. Prompt HU19 — Escuchar listado de movimientos del historial en voz alta
+
+```xml
+<role>
+Eres un ingeniero backend senior experto en FastAPI, Redis, rate limiting y rendimiento de APIs, con criterio para validar cuotas frente a patrones de uso reales del cliente.
+</role>
+
+<context>
+Repositorio: BackFinanzas (rama `dev`). HU16, HU17 y HU18 ya están implementadas.
+En HU19 la PWA (FrontFinanzas) lee en voz alta, en bloques de hasta 10, los movimientos visibles del historial (datos de Dexie), con controles Pausar/Reanudar/Siguiente/Detener. Durante una lectura larga, `SpeechAuthService` del cliente renueva el token cuando faltan < 60 s para expirar y reutiliza peticiones en vuelo.
+En el backend esto significa: **renovaciones y solicitudes concurrentes de token** deben comportarse de forma predecible bajo la cuota de 30/h, y el historial que el cliente lee debe ser consistente con lo sincronizado (movimientos con `deleted_at` no deben reaparecer como activos).
+</context>
+
+<documents>
+- `docs/MVP2.md` → secciones `#### HU19` y `#### HU16`.
+- `BLUEPRINT.md` → solo `#### HU11` (historial) y `#### HU12` (búsqueda) para entender el origen de los datos.
+- `AGENTS.md`.
+- Código: `app/modules/speech/**`, `app/modules/sync/application/pull.py`, `app/modules/auth/infrastructure/rate_limiter.py`.
+</documents>
+
+<task>
+Valida con pruebas que el backend soporta el patrón de uso de HU19 (lectura secuencial larga con renovación de token y borrados lógicos) y corrige únicamente las brechas encontradas.
+</task>
+
+<instructions>
+1. **Cuota bajo renovación** (`tests/integration/speech/test_speech_rate_limit_renewal.py`):
+   - Simula una sesión de lectura de 1 hora con renovaciones cada ~540 s → total muy por debajo de 30 → todas 200.
+   - Solicitudes concurrentes (`asyncio.gather` de 5 peticiones del mismo usuario) → el contador de Redis se incrementa de forma atómica (exactamente 5) sin condiciones de carrera.
+   - Usuarios distintos tienen cuotas independientes (`speech:token:{user_id}`).
+   - Al superar 30 → 429 con `code="SPEECH_RATE_LIMITED"`; tras expirar la ventana (Redis con TTL controlado), vuelve a 200.
+2. **Consistencia de datos leídos** (`tests/acceptance/features/speech/historial.feature` con pytest-bdd): tras un `push` que borra lógicamente un movimiento, el `pull` lo devuelve con `deleted_at` (para que el cliente lo omita de la cola de lectura) y nunca lo borra físicamente.
+3. **Resiliencia:** un fallo de Azure durante una renovación devuelve 503. Verifica si ese intento consume cuota y que coincide con lo definido en HU16; si HU16 no lo define, pregunta antes de decidir.
+4. Corrige en la capa correcta cualquier brecha (p. ej. incremento no atómico, clave de cuota compartida entre usuarios) y explícala en el reporte.
+</instructions>
+
+<constraints>
+- **No** crees endpoints de historial o lectura por lotes en el servidor: la cola de lectura (`buildHistorySpeechQueue`) es dominio del frontend sobre Dexie.
+- No cambies el límite de 30/h ni la vigencia de 600 s sin aprobación.
+- No modifiques el protocolo de sincronización ni el modelo de datos.
+- Fuera de alcance: lectura automática al abrir la app, barge-in por micrófono, lectura completa de 2.000 registros sin bloques.
+</constraints>
+
+<stop_conditions>
+Detente y pregunta si: las pruebas demuestran que 30/h es insuficiente para el uso descrito; no está definido si un 503 de Azure consume cuota; o una prueba existente falla por algo que no tocaste.
+</stop_conditions>
+
+<workflow>
+1. Lee HU19, el módulo `speech`, el rate limiter y `pull.py`.
+2. Presenta un plan corto y espera aprobación.
+3. Escribe las pruebas; corrige solo brechas reales.
+4. Ejecuta `uv run ruff check . && uv run ruff format --check . && uv run mypy app && uv run pytest` en `backend/` y déjalo en verde.
+</workflow>
+
+<output_format>
+Reporte según `AGENTS.md`, más la lista de tareas que quedan para FrontFinanzas (`buildHistorySpeechQueue`, cola en `SpeechSynthesisService`, `VoicePlayerBarComponent`).
+</output_format>
+
+<verification>
+- [ ] Renovación, concurrencia, aislamiento por usuario y reinicio de ventana probados.
+- [ ] Borrados lógicos verificados vía `pull`; sin borrado físico.
+- [ ] Sin endpoints nuevos ni cambios de modelo o de protocolo.
+- [ ] ruff, mypy y pytest en verde.
+</verification>
+```
+
+---
+
+## 6. Implementación realizada en BackFinanzas (HU16–HU19)
+
+> Resultado de ejecutar los prompts de la sección 5 sobre la rama `dev`. Alcance: **solo backend**. El parser de dictado, la síntesis de voz, la cola de lectura y la UI quedan pendientes en FrontFinanzas (ver 6.6).
+
+### 6.1. Resumen general
+
+| HU | Qué se desarrolló en el backend | Código de producción |
+|---|---|---|
+| HU16 | Nuevo módulo `speech` con `POST /speech/token`: emite un token temporal de Azure AI Speech (600 s) a usuarios autenticados, con límite de 30 por hora por usuario en Redis, degradación a 503 y sin exponer la clave. | Sí |
+| HU17 | Se verificó que un movimiento dictado y confirmado entra por `sync/push` con las mismas reglas de HU04/HU05 (monto en centavos, fecha no futura, categoría del mismo tipo, idempotencia por UUID) y que el token sirve para el reconocimiento. Las reglas ya existían: no hubo que cambiar el dominio de `transactions`. | No (solo pruebas) |
+| HU18 | Se verificó y documentó en OpenAPI que el mismo token sirve para la síntesis, que el backend no recibe voz ni modo (422) y que un fallo del proveedor llega como 503 con mensaje en español. | No (solo pruebas y documentación del contrato) |
+| HU19 | Se verificó la cuota bajo renovaciones de lecturas largas, la atomicidad con peticiones concurrentes (Redis real), el aislamiento por usuario, el reinicio de la ventana y que los movimientos borrados llegan con `deleted: true` en el pull para omitirlos de la lectura. | No (solo pruebas) |
+
+### 6.2. Arquitectura del módulo `speech`
+
+```
+backend/app/modules/speech/
+├── domain/          SpeechToken (inmutable, vigencia 1–600 s, repr sin token)
+│                    SpeechUnavailableError → 503 SPEECH_SERVICE_UNAVAILABLE
+│                    SpeechRateLimitError   → 429 SPEECH_RATE_LIMITED
+├── application/     Puertos SpeechTokenProvider y RequestCounter (Protocol)
+│                    Caso de uso IssueSpeechToken.execute(user_id)
+├── infrastructure/  AzureSpeechTokenProvider (httpx → STS /sts/v1.0/issueToken)
+└── api/             POST /speech/token, SpeechTokenIn (extra="forbid"), SpeechTokenOut, ErrorOut
+```
+
+- **Composición:** `app/composition.py` crea el proveedor de Azure desde `Settings` y reutiliza `RedisRateLimiter` de `auth` como contador (el único lugar que cruza módulos). El router se registra en `app/main.py`.
+- **Errores:** se añadió `ServiceUnavailableError` en `app/shared/errors.py`; el manejador global de `main.py` la traduce a HTTP 503 con el mismo cuerpo `{code, message}`.
+- **Configuración:** `AZURE_SPEECH_KEY` (`SecretStr`), `AZURE_SPEECH_REGION` y `AZURE_SPEECH_TOKEN_TIMEOUT_SECONDS` son opcionales; sin ellas la API arranca y el endpoint responde 503. Documentadas vacías en `backend/.env.example`.
+- **Dependencias:** `httpx` pasó del grupo `dev` a dependencias de ejecución (ya estaba en `uv.lock`; no se agregaron librerías nuevas).
+
+### 6.3. Contrato `POST /speech/token`
+
+| Caso | Respuesta |
+|---|---|
+| Sesión válida, cuerpo vacío u omitido | `200` `{"token": "<jwt-de-azure>", "region": "eastus", "expires_in_seconds": 600}` + `Cache-Control: no-store` |
+| Sin `Authorization` o JWT inválido | `401` |
+| Cualquier campo en el cuerpo (`user_id`, `voice`, `mode`, `key`…) | `422` |
+| Más de 30 solicitudes en la última hora (por `user_id` del JWT) | `429` `{"code": "SPEECH_RATE_LIMITED", "message": "Has alcanzado el límite temporal del servicio de voz. Intenta más tarde"}` |
+| Azure sin configurar, timeout, error de red o respuesta ≠ 200 | `503` `{"code": "SPEECH_SERVICE_UNAVAILABLE", "message": "El servicio de voz no está disponible en este momento"}` |
+
+`backend/openapi.json` se regeneró con `scripts/export_openapi.py`; FrontFinanzas debe regenerar su cliente con `ng-openapi-gen`.
+
+### 6.4. Decisiones tomadas
+
+1. **Un intento que termina en 503 consume cuota:** el contador sube antes de llamar a Azure, para que un cliente que reintenta en bucle no sature el proveedor. Con renovaciones cada ~540 s, una hora de lectura usa unos 7 tokens de 30.
+2. **El backend no elige voz ni idioma:** la voz (`es-CO-SalomeNeural`) y el locale (`es-CO`) son configuración del cliente; el token es único para STT y TTS.
+3. **Sin cambios de modelo de datos, migraciones ni protocolo de sincronización:** el dictado y la lectura reutilizan `sync/push` y `sync/pull` tal como están.
+4. **Seguridad:** la clave solo se lee con `get_secret_value()` al llamar a Azure; los logs registran solo el tipo de error o el código HTTP, nunca la clave ni el token.
+
+**Cambio de regla aprobado y aplicado** en `AGENTS.md` y `BLUEPRINT.md` (convenciones): "Errores de dominio… HTTP 422" ahora incluye las excepciones `UnauthorizedError` → 401, `TooManyRequestsError` → 429 y `ServiceUnavailableError` → 503, y deja explícito que los límites de uso cuentan cada intento, también los que terminan en 503.
+
+### 6.5. Pruebas y trazabilidad
+
+| Criterio | Prueba que lo verifica |
+|---|---|
+| HU16 — Obtención exitosa de token | `tests/integration/speech/test_speech_api.py › test_obtencion_exitosa_de_token_temporal`; `features/speech/token.feature` |
+| HU16 — Límite excedido (429) | `test_speech_api.py › test_limite_de_solicitudes_excedido`; `unit/speech/test_issue_token.py › test_la_cuota_es_de_30_por_hora_por_usuario` |
+| HU16 — Servicio no configurado o caído (503) | `test_speech_unavailable.py` (500, 401 de Azure, timeout, sin credenciales); `unit/speech/test_azure_provider.py` |
+| HU16 — Sin sesión / campos extra | `test_speech_api.py › test_sin_sesion_responde_401`, `test_campos_extra_se_rechazan_con_422` |
+| HU16 — Clave nunca expuesta | `tests/security/test_speech_security.py`; `test_azure_provider.py › test_los_logs_no_contienen_la_clave_ni_el_token` |
+| HU17 — Gasto e ingreso dictados se sincronizan | `features/speech/dictado.feature` (2.500.000 y 350.000.000 centavos) |
+| HU17 — Monto 0, fecha futura, categoría de otro tipo | `dictado.feature` (`InvalidAmountError`, `FutureDateError`, `CategoryTypeMismatchError`) |
+| HU17 — Doble "Guardar" no duplica | `dictado.feature › Pulsar dos veces "Guardar"…` |
+| HU18 — Mismo token para síntesis, sin voz en el backend | `test_speech_tts_contract.py`; `features/speech/lectura.feature` |
+| HU18 — Fallo del servicio de síntesis | `test_speech_tts_contract.py › test_fallo_del_servicio_de_sintesis` |
+| HU18 — OpenAPI documenta 200/401/422/429/503 | `test_speech_tts_contract.py › test_openapi_documenta_todas_las_respuestas` |
+| HU19 — Renovaciones en lectura larga | `test_issue_token.py › test_renovar_cada_540_segundos…`; `features/speech/historial.feature` |
+| HU19 — Concurrencia atómica y reinicio de ventana (Redis real) | `test_speech_rate_limit_renewal.py` |
+| HU19 — Cuotas independientes por usuario / 503 consume cuota | `test_issue_token.py` |
+| HU19 — Movimiento borrado llega con `deleted: true` | `historial.feature` |
+
+**Estado de la verificación (local, sin Docker):**
+- `ruff check`, `ruff format --check`, `mypy app` (estricto): ✅
+- `pytest` de unitarias completas + API y seguridad de `speech`: ✅ 241 pruebas en verde; cobertura del módulo `speech`: 99 %.
+- `scripts/export_openapi.py --check`: ✅
+- **Pendiente de ejecutar** (requiere PostgreSQL y Redis de `docker compose up -d`, o la CI): las 15 features de `tests/acceptance/features/speech/` y `test_speech_rate_limit_renewal.py`. Se recolectan sin errores (`pytest --collect-only`).
+
+### 6.6. Implementación en FrontFinanzas (rama `dev`)
+
+La interfaz de voz quedó integrada con el frontend existente (Angular 22, componentes standalone `OnPush` con signals, Dexie + `outbox`) sin cambiar el flujo manual ni el modelo de datos.
+
+**Arquitectura**
+
+```
+src/app/core/speech/
+├── speech-engine.ts           Puerto SpeechEngine + SPEECH_LOCALE (es-CO) y SPEECH_VOICE (es-CO-SalomeNeural)
+├── azure-speech-engine.ts     Adaptador de microsoft-cognitiveservices-speech-sdk (SpeechRecognizer,
+│                              SpeechSynthesizer + SpeakerAudioDestination para pausar/reanudar)
+├── speech-auth.service.ts     Token temporal solo en memoria, ligado a la cuenta; renueva con < 60 s;
+│                              peticiones simultáneas compartidas; 429/503/sin red → SpeechError
+├── speech-recognition.service.ts  Dictado: permiso de micrófono, estados Listo/Escuchando/Procesando,
+│                              doble toque detiene, pérdida de red cancela y libera el micrófono
+├── speech-synthesis.service.ts    Lectura única exclusiva y cola con pausar/reanudar/siguiente/detener
+├── speech-errors.ts           SpeechError + textos exactos de este documento
+└── speech-sdk.d.ts            Declaración del bundle de navegador del SDK
+src/app/features/movimientos/
+├── domain/voice.ts            parseVoiceTransactionDraft, formatTransactionForSpeech, buildHistorySpeechQueue
+├── components/voice-player-bar.ts  Barra de lectura del historial
+└── pages/                     transaction-form (dictar / escuchar) e history (escuchar historial)
+```
+
+| HU | Qué ve el usuario |
+|---|---|
+| HU16 | Nada directamente: cualquier acción de voz obtiene el token de `POST /speech/token` (método `Api.speechToken()`). Sin conexión no se llama a la API y se muestra el aviso correspondiente. |
+| HU17 | En "Nuevo movimiento", el botón **"Dictar movimiento"** con estado accesible (`aria-live`). El dictado prellena tipo, monto, categoría, fecha y descripción; si falta el monto, avisa "No pudimos detectar el monto. Ingrésalo para continuar" y "Guardar" queda deshabilitado. Siempre guarda el usuario con el mismo `repo.save` (Dexie + `outbox`) y las alertas de presupuesto de siempre. |
+| HU18 | Al abrir un movimiento, el botón **"Escuchar movimiento"**, que cambia a **"Detener lectura"** mientras suena. Lee los datos locales: "Gasto de $25.000 en la categoría Alimentación, registrado hoy, concepto: Almuerzo". |
+| HU19 | En "Movimientos", el botón **"Escuchar historial"** lee los movimientos filtrados en bloques de 10, resalta la fila que se está leyendo y muestra la barra con Pausar/Reanudar, Siguiente y Detener. Al terminar un bloque ofrece "Escuchar los siguientes". Cambiar filtros o salir de la pantalla detiene la lectura. |
+
+**Decisiones técnicas**
+- **SDK:** `microsoft-cognitiveservices-speech-sdk@^1.53.0`, el único SDK autorizado en este documento. Se carga con `import()` diferido la primera vez que se usa la voz (chunk aparte de ~65 kB comprimido), así que el bundle inicial no crece. Se usa el bundle oficial para navegador porque la entrada principal del paquete arrastra módulos de Node (`https`, `url`); se declaró en `allowedCommonJsDependencies`.
+- **Seguridad:** nada de claves en `environment.ts`; el token vive solo en memoria y no se reutiliza si cambia la cuenta.
+- **Capas:** los componentes usan servicios, nunca el SDK; el dominio de voz es puro (recibe la fecha de hoy del `Clock`) y la descripción conserva las tildes originales del dictado.
+
+**Verificación:** `tsc` ✅ · ESLint ✅ · `ng test`: 138 pruebas en verde (31 de dominio de voz y 23 de servicios de voz con un motor falso) ✅ · `ng build` de producción sin advertencias ✅. El CLI de Angular 22 exige Node ≥ 22.22.3; en la máquina de desarrollo hay Node 22.19.0, así que los comandos se ejecutaron con `npx -p node@24`.
+
+**Pendiente:** probarlo de punta a punta en un navegador real con una clave de Azure AI Speech configurada en el backend (`AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION`). Las pruebas automáticas sustituyen el SDK por un motor falso.

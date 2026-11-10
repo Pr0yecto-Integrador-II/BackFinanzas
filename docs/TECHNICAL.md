@@ -45,6 +45,7 @@ api -> application -> domain <- infrastructure
 | `recurring` | Reglas de movimientos recurrentes |
 | `budgets` | Presupuestos mensuales por categoría |
 | `sync` | Aplicación y consulta incremental de cambios |
+| `speech` | Token temporal de Azure AI Speech para dictado y lectura por voz (MVP 2, HU16–HU19) |
 | `shared` | Reloj, errores, unidad de trabajo, base de datos y utilidades comunes |
 
 La composición de dependencias se centraliza en `backend/app/composition.py`. Los módulos no
@@ -143,6 +144,12 @@ La configuración se carga desde variables de entorno y `.env` mediante
 | `REFRESH_TOKEN_DAYS` | No | `30` | Vida inicial del refresh |
 | `COOKIE_SECURE` | No | `true` | Atributo seguro de la cookie |
 | `FRONTEND_URL` | No | `http://localhost:4200` | Origen permitido por CORS |
+| `AZURE_SPEECH_KEY` | No | Ninguno | Clave de suscripción de Azure AI Speech (solo servidor) |
+| `AZURE_SPEECH_REGION` | No | Ninguno | Región de Azure AI Speech, p. ej. `eastus` |
+| `AZURE_SPEECH_TOKEN_TIMEOUT_SECONDS` | No | `5` | Tiempo máximo de espera al STS de Azure |
+
+Sin `AZURE_SPEECH_KEY` o `AZURE_SPEECH_REGION` la API arranca igual y `POST /speech/token`
+responde `503 SPEECH_SERVICE_UNAVAILABLE`.
 
 No se deben almacenar secretos en el repositorio ni en el frontend.
 
@@ -162,6 +169,7 @@ Base local: `http://localhost:8000`.
 | `GET` | `/me` | Bearer | Consulta la cuenta autenticada |
 | `POST` | `/sync/push` | Bearer | Envía cambios locales |
 | `GET` | `/sync/pull` | Bearer | Descarga cambios desde una versión |
+| `POST` | `/speech/token` | Bearer | Emite un token temporal de voz (30/h por usuario; 429/503) |
 | `GET` | `/health` | No | Verifica disponibilidad de la API |
 
 Los endpoints protegidos reciben:
@@ -266,6 +274,8 @@ uv run alembic upgrade head
 - CORS limitado al origen del frontend configurado.
 - Sin `user_id` aceptado desde el body o la URL.
 - Sin secretos ni datos sensibles en logs de producción.
+- La clave de Azure AI Speech (`SecretStr`) nunca sale del servidor: el navegador solo recibe un
+  token temporal de 600 s con `Cache-Control: no-store`, limitado a 30 por hora por usuario.
 
 ## 9. Pruebas y calidad
 
