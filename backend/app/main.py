@@ -7,11 +7,14 @@ from app.modules.auth.api.router import me_router
 from app.modules.auth.api.router import router as auth_router
 from app.modules.speech.api.router import router as speech_router
 from app.modules.sync.api.router import router as sync_router
+from app.modules.vision.api.router import router as vision_router
 from app.shared.errors import (
     DomainError,
+    PayloadTooLargeError,
     ServiceUnavailableError,
     TooManyRequestsError,
     UnauthorizedError,
+    UnsupportedMediaTypeError,
 )
 
 
@@ -31,6 +34,10 @@ def create_app() -> FastAPI:
         status = 422
         if isinstance(exc, UnauthorizedError):
             status = 401
+        elif isinstance(exc, PayloadTooLargeError):
+            status = 413
+        elif isinstance(exc, UnsupportedMediaTypeError):
+            status = 415
         elif isinstance(exc, TooManyRequestsError):
             status = 429
         elif isinstance(exc, ServiceUnavailableError):
@@ -41,6 +48,7 @@ def create_app() -> FastAPI:
     app.include_router(me_router)
     app.include_router(sync_router)
     app.include_router(speech_router)
+    app.include_router(vision_router)
 
     @app.get("/health")
     async def health() -> dict[str, str]:
