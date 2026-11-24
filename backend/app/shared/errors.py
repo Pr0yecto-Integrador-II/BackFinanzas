@@ -22,3 +22,11 @@ class TooManyRequestsError(DomainError):
 
 class ServiceUnavailableError(DomainError):
     """Un servicio externo necesario no está disponible. La API responde HTTP 503."""
+
+
+class PayloadTooLargeError(DomainError):
+    """El cuerpo enviado supera el tamaño permitido. La API responde HTTP 413."""
+
+
+class UnsupportedMediaTypeError(DomainError):
+    """El tipo de archivo enviado no es admitido. La API responde HTTP 415."""

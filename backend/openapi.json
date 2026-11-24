@@ -87,6 +87,44 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "ImageAnalysisOut": {
+        "properties": {
+          "caption": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Descripción corta de la imagen, si la hay.",
+            "title": "Caption"
+          },
+          "ocr_lines": {
+            "description": "Líneas de texto leídas, en orden.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Ocr Lines",
+            "type": "array"
+          },
+          "tags": {
+            "items": {
+              "$ref": "#/components/schemas/TagOut"
+            },
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ocr_lines",
+          "tags",
+          "caption"
+        ],
+        "title": "ImageAnalysisOut",
+        "type": "object"
+      },
       "LoginIn": {
         "additionalProperties": false,
         "properties": {
@@ -367,6 +405,26 @@
           "expires_in_seconds"
         ],
         "title": "SpeechTokenOut",
+        "type": "object"
+      },
+      "TagOut": {
+        "properties": {
+          "confidence": {
+            "description": "Confianza entre 0 y 1.",
+            "title": "Confidence",
+            "type": "number"
+          },
+          "name": {
+            "description": "Etiqueta en minúsculas, normalmente en inglés (p. ej. 'food').",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "confidence"
+        ],
+        "title": "TagOut",
         "type": "object"
       },
       "UserOut": {
@@ -942,6 +1000,100 @@
         "summary": "Push",
         "tags": [
           "sync"
+        ]
+      }
+    },
+    "/vision/analyze": {
+      "post": {
+        "description": "El cuerpo es la imagen cruda (`Content-Type: image/jpeg` o `image/png`). Devuelve el texto leído, las etiquetas y una descripción. No guarda la imagen ni el resultado (HU20).",
+        "operationId": "analyze_image_vision_analyze_post",
+        "requestBody": {
+          "content": {
+            "image/jpeg": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "image/png": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageAnalysisOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sesión ausente o vencida."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "La imagen supera el tamaño máximo (IMAGE_TOO_LARGE)."
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "No es una imagen JPEG o PNG (UNSUPPORTED_IMAGE, EMPTY_IMAGE)."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Límite de análisis por hora superado (VISION_RATE_LIMITED)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Servicio de visión no configurado o caído (VISION_SERVICE_UNAVAILABLE)."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Analizar la imagen de un recibo o una compra",
+        "tags": [
+          "vision"
         ]
       }
     }

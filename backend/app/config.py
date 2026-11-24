@@ -18,6 +18,14 @@ class Settings(BaseSettings):
     azure_speech_key: SecretStr | None = None
     azure_speech_region: str | None = None
     azure_speech_token_timeout_seconds: float = 5.0
+    # Azure AI Vision (MVP 3, HU20). Opcionales: sin ellas el análisis de imágenes responde 503.
+    azure_vision_key: SecretStr | None = None
+    azure_vision_endpoint: str | None = None
+    azure_vision_timeout_seconds: float = 10.0
+    # `caption` solo existe en algunas regiones de Azure (en otras el servicio responde 400).
+    azure_vision_features: str = "read,tags"
+    vision_max_image_bytes: int = 4 * 1024 * 1024
+    vision_requests_per_hour: int = 30
 
 
 @lru_cache

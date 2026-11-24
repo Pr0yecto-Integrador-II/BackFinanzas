@@ -54,6 +54,9 @@ from app.modules.transactions.infrastructure.category_referrer import (
 from app.modules.transactions.infrastructure.changes import transaction_changes
 from app.modules.transactions.infrastructure.pending_occurrences import SqlPendingOccurrences
 from app.modules.transactions.infrastructure.repository import SqlTransactionRepository
+from app.modules.vision.application.ports import ImageAnalyzer
+from app.modules.vision.application.ports import RequestCounter as VisionCounter
+from app.modules.vision.infrastructure.azure_image_analyzer import AzureImageAnalyzer
 from app.shared.clock import Clock
 from app.shared.sql_uow import SqlAlchemyUnitOfWork
 
@@ -155,4 +158,19 @@ def speech_token_provider(settings: Settings) -> SpeechTokenProvider:
 
 def speech_request_counter() -> RequestCounter:
     """El límite de tokens de voz reutiliza el contador de Redis que ya usa `auth`."""
+    return RedisRateLimiter(get_redis())
+
+
+def image_analyzer(settings: Settings) -> ImageAnalyzer:
+    key = settings.azure_vision_key
+    return AzureImageAnalyzer(
+        key.get_secret_value() if key else None,
+        settings.azure_vision_endpoint,
+        settings.azure_vision_timeout_seconds,
+        features=settings.azure_vision_features,
+    )
+
+
+def vision_request_counter() -> VisionCounter:
+    """El límite de análisis reutiliza el contador de Redis que ya usa `auth`."""
     return RedisRateLimiter(get_redis())
